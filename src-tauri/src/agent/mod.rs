@@ -16,15 +16,15 @@ use crate::commands::{
 
 // ---- Memory System ----
 
-/// Simple SQLite-backed memory store for persistent chat history.
+/// Simple SQLite-backed memory store.
 pub struct MemoryStore {
-    db: rusqlite::Connection,
+    db: std::sync::Mutex<rusqlite::Connection>,
 }
 
 impl MemoryStore {
     pub fn new(path: &str) -> Result<Self, String> {
-        let db = rusqlite::Connection::open(path).map_err(|e| e.to_string())?;
-        db.execute_batch(
+        let conn = rusqlite::Connection::open(path).map_err(|e| e.to_string())?;
+        conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
                 title TEXT,
@@ -41,11 +41,12 @@ impl MemoryStore {
                 FOREIGN KEY(session_id) REFERENCES sessions(id)
             );"
         ).map_err(|e| e.to_string())?;
-        Ok(Self { db })
+        Ok(Self { db: std::sync::Mutex::new(conn) })
     }
 
     pub fn save_message(&self, session_id: &str, role: &str, content: &str) -> Result<(), String> {
-        self.db.execute(
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        db.execute(
             "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![session_id, role, content, chrono::Utc::now().to_rfc3339()],
         ).map_err(|e| e.to_string())?;
@@ -53,7 +54,8 @@ impl MemoryStore {
     }
 
     pub fn get_history(&self, session_id: &str, limit: usize) -> Vec<providers::ChatMessage> {
-        let mut stmt = self.db.prepare(
+        let db = self.db.lock().unwrap();
+        let mut stmt = db.prepare(
             "SELECT role, content FROM messages WHERE session_id = ?1 ORDER BY id DESC LIMIT ?2"
         ).unwrap();
         let mut msgs: Vec<providers::ChatMessage> = stmt

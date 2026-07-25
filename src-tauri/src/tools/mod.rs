@@ -22,6 +22,7 @@ pub trait Tool: Send + Sync {
 }
 
 /// Central tool registry.
+#[derive(Debug)]
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
 }
