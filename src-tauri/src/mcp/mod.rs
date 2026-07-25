@@ -69,6 +69,7 @@ struct McpResponse {
     error: Option<serde_json::Value>,
 }
 
+/// MCP connection (not Debug because Child is not Debug)
 struct McpConnection {
     child: Child,
     stdin: tokio::process::ChildStdin,
@@ -76,10 +77,29 @@ struct McpConnection {
     tools: Vec<McpTool>,
 }
 
+/// Manual Debug for McpConnection (skip tokio internals)
+impl std::fmt::Debug for McpConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("McpConnection")
+            .field("tools", &self.tools)
+            .finish()
+    }
+}
+
 pub struct McpClient {
     config: McpConfig,
     connections: HashMap<String, McpConnection>,
     next_id: u64,
+}
+
+/// Manual Debug for McpClient
+impl std::fmt::Debug for McpClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("McpClient")
+            .field("config", &self.config)
+            .field("connections", &self.connections)
+            .finish()
+    }
 }
 
 impl McpClient {
@@ -144,17 +164,17 @@ impl McpClient {
             tools: vec![],
         };
 
-        // Initialize
-        let _ = self.send_request_to_conn(&mut conn, "initialize", serde_json::json!({
+        // Initialize — pass next_id as a separate &mut u64, not as &mut self
+        let _ = send_request(&mut self.next_id, &mut conn, "initialize", serde_json::json!({
             "protocolVersion": "2024-11-05",
             "capabilities": { "tools": {} },
             "clientInfo": { "name": "nexus", "version": "0.1.0" }
         })).await?;
 
-        let _ = self.send_notification_to_conn(&mut conn, "initialized", serde_json::json!({})).await?;
+        let _ = send_notification(&mut conn, "initialized", serde_json::json!({})).await?;
 
         // List tools
-        let tools_result = self.send_request_to_conn(&mut conn, "tools/list", serde_json::json!({})).await?;
+        let tools_result = send_request(&mut self.next_id, &mut conn, "tools/list", serde_json::json!({})).await?;
         let tools: Vec<McpTool> = tools_result.get("tools")
             .and_then(|t| serde_json::from_value(t.clone()).ok())
             .unwrap_or_default();
@@ -171,7 +191,7 @@ impl McpClient {
         let conn = self.connections.get_mut(server)
             .ok_or_else(|| anyhow::anyhow!("Server '{}' not connected", server))?;
 
-        let result = self.send_request_to_conn(conn, "tools/call", serde_json::json!({
+        let result = send_request(&mut self.next_id, conn, "tools/call", serde_json::json!({
             "name": tool, "arguments": arguments
         })).await?;
 
@@ -195,48 +215,48 @@ impl McpClient {
         }
         all
     }
+}
 
-    // --- Private helpers ---
+// --- Free functions (no &mut self, avoids double-borrow) ---
 
-    async fn send_request_to_conn(
-        &mut self, conn: &mut McpConnection, method: &str, params: serde_json::Value,
-    ) -> anyhow::Result<serde_json::Value> {
-        let id = self.next_id;
-        self.next_id += 1;
+async fn send_request(
+    next_id: &mut u64, conn: &mut McpConnection, method: &str, params: serde_json::Value,
+) -> anyhow::Result<serde_json::Value> {
+    let id = *next_id;
+    *next_id += 1;
 
-        let req = McpRequest { jsonrpc: "2.0".into(), id, method: method.into(), params };
-        let line = serde_json::to_string(&req)?;
-        conn.stdin.write_all(format!("{}\n", line).as_bytes()).await?;
-        conn.stdin.flush().await?;
+    let req = McpRequest { jsonrpc: "2.0".into(), id, method: method.into(), params };
+    let line = serde_json::to_string(&req)?;
+    conn.stdin.write_all(format!("{}\n", line).as_bytes()).await?;
+    conn.stdin.flush().await?;
 
-        loop {
-            let mut buf = String::new();
-            match conn.stdout.read_line(&mut buf).await {
-                Ok(0) => return Err(anyhow::anyhow!("Connection closed")),
-                Ok(_) => {
-                    let buf = buf.trim();
-                    if buf.is_empty() { continue; }
-                    if let Ok(resp) = serde_json::from_str::<McpResponse>(buf) {
-                        if resp.id == Some(id) {
-                            if let Some(e) = resp.error {
-                                return Err(anyhow::anyhow!("MCP error: {:?}", e));
-                            }
-                            return Ok(resp.result.unwrap_or(serde_json::Value::Null));
+    loop {
+        let mut buf = String::new();
+        match conn.stdout.read_line(&mut buf).await {
+            Ok(0) => return Err(anyhow::anyhow!("Connection closed")),
+            Ok(_) => {
+                let buf = buf.trim();
+                if buf.is_empty() { continue; }
+                if let Ok(resp) = serde_json::from_str::<McpResponse>(buf) {
+                    if resp.id == Some(id) {
+                        if let Some(e) = resp.error {
+                            return Err(anyhow::anyhow!("MCP error: {:?}", e));
                         }
+                        return Ok(resp.result.unwrap_or(serde_json::Value::Null));
                     }
                 }
-                Err(e) => return Err(anyhow::anyhow!("Read error: {}", e)),
             }
+            Err(e) => return Err(anyhow::anyhow!("Read error: {}", e)),
         }
     }
+}
 
-    async fn send_notification_to_conn(
-        &mut self, conn: &mut McpConnection, method: &str, params: serde_json::Value,
-    ) -> anyhow::Result<()> {
-        let notif = serde_json::json!({ "jsonrpc": "2.0", "method": method, "params": params });
-        let line = serde_json::to_string(&notif)?;
-        conn.stdin.write_all(format!("{}\n", line).as_bytes()).await?;
-        conn.stdin.flush().await?;
-        Ok(())
-    }
+async fn send_notification(
+    conn: &mut McpConnection, method: &str, params: serde_json::Value,
+) -> anyhow::Result<()> {
+    let notif = serde_json::json!({ "jsonrpc": "2.0", "method": method, "params": params });
+    let line = serde_json::to_string(&notif)?;
+    conn.stdin.write_all(format!("{}\n", line).as_bytes()).await?;
+    conn.stdin.flush().await?;
+    Ok(())
 }
