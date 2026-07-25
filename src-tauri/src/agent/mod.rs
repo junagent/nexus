@@ -207,20 +207,21 @@ impl NexusEngine {
         self.add_message(&sid, "user", message);
 
         let start = std::time::Instant::now();
+        let (provider, model) = match (&self.active_provider, &self.active_model) {
+            (Some(p), Some(m)) => (p.clone(), m.clone()),
+            _ => (String::new(), String::new()),
+        };
+        let tool_list = self.tool_registry.list();
+        let memory_status = if self.memory.is_some() { "active" } else { "disabled" };
         let bandit_count = self.bandit.summary().len();
         let (result, tool_calls, selected_provider, selected_model) = {
-            let (provider, model) = match (&self.active_provider, &self.active_model) {
-                (Some(p), Some(m)) => (p.clone(), m.clone()),
-                _ => (String::new(), String::new()),
-            };
-
             if provider.is_empty() {
                 (format!(
                     "🤖 **Nexus v{}**\n\n⚙️ Configure a provider in Engine Config to get started.\n🔧 {} tools loaded: {}\n💾 Memory: {}\n🧠 Bandit: {} arms tracked",
                     env!("CARGO_PKG_VERSION"),
-                    self.tool_registry.list().len(),
-                    self.tool_registry.list().join(", "),
-                    if self.memory.is_some() { "active" } else { "disabled" },
+                    tool_list.len(),
+                    tool_list.join(", "),
+                    memory_status,
                     bandit_count,
                 ), vec![], String::new(), String::new())
             } else {
