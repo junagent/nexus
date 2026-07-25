@@ -6,6 +6,7 @@ pub mod tools;
 pub mod mcp;
 pub mod skill_store;
 pub mod trace;
+pub mod approval;
 
 use tauri::Manager;
 
@@ -63,6 +64,9 @@ pub fn run() {
             commands::trace::trace_query,
             commands::trace::trace_clear,
             commands::trace::trace_count,
+            commands::approval::approval_pending,
+            commands::approval::approval_respond,
+            commands::approval::approval_check,
         ])
         .run(tauri::generate_context!())
         .expect("error when running Nexus");

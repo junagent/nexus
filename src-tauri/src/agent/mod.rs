@@ -97,6 +97,7 @@ pub struct NexusEngine {
     pub bandit: crate::bandit::BanditSelector,
     pub skill_store: crate::skill_store::SkillStore,
     pub trace_store: crate::trace::TraceStore,
+    pub approval: crate::approval::ApprovalHandler,
 }
 
 impl NexusEngine {
@@ -133,6 +134,9 @@ impl NexusEngine {
 
         // Initialize trace store
         engine.trace_store = crate::trace::TraceStore::new(1000);
+
+        // Initialize approval handler
+        engine.approval = crate::approval::ApprovalHandler::new();
 
         // Register all provider arms in the bandit selector
         for (provider, models) in &[
@@ -194,6 +198,7 @@ impl NexusEngine {
                         bandit: crate::bandit::BanditSelector::new(""),
                         skill_store: crate::skill_store::SkillStore::load(&std::path::Path::new("")),
                         trace_store: crate::trace::TraceStore::new(1000usize),
+                        approval: crate::approval::ApprovalHandler::new(),
                     }
     }
 
