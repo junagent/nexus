@@ -180,7 +180,7 @@ impl BanditSelector {
             arm.total_cost += cost;
             arm.last_used = chrono::Utc::now().timestamp();
             self.total_trials += 1;
-            self.persist_arm(arm);
+            Self::persist_arm(&self.db, arm);
         }
     }
 
@@ -193,12 +193,12 @@ impl BanditSelector {
             arm.total_cost += cost;
             arm.last_used = chrono::Utc::now().timestamp();
             self.total_trials += 1;
-            self.persist_arm(arm);
+            Self::persist_arm(&self.db, arm);
         }
     }
 
-    fn persist_arm(&self, arm: &BanditArm) {
-        if let Some(ref db) = self.db {
+    fn persist_arm(db: &Option<std::sync::Mutex<rusqlite::Connection>>, arm: &BanditArm) {
+        if let Some(ref db) = *db {
             if let Ok(db) = db.lock() {
                 let _ = db.execute(
                     "UPDATE bandit_arms SET trials=?1, successes=?2, total_latency_ms=?3, total_cost=?4, last_used=?5 WHERE provider=?6 AND model=?7",
