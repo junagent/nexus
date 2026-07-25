@@ -206,74 +206,91 @@ impl NexusEngine {
 
         self.add_message(&sid, "user", message);
 
-        let (result, tool_calls, selected_provider, selected_model) = if let (Some(ref provider), Some(ref model)) =
-            (&self.active_provider, &self.active_model)
-        {
+        let (result, tool_calls, selected_provider, selected_model) = {
+            let (provider, model) = match (&self.active_provider, &self.active_model) {
+                (Some(p), Some(m)) => (p.clone(), m.clone()),
+                _ => (String::new(), String::new()),
+            };
+            let bandit_count = self.bandit.summary().len();
             let start = std::time::Instant::now();
-            match providers::get_provider_config(provider) {
-                Ok((base_url, api_key)) => {
-                    let mut msgs = self.build_messages(&sid);
-                    
-                    // Try with tool calling
-                    let tools = self.tool_registry.to_openai_tools();
-                    match providers::chat_with_tools(&base_url, &api_key, model, &msgs, &tools).await {
-                        Ok((text, calls)) => {
-                            let mut executed = Vec::new();
-                            for call in &calls {
-                                if let Some(tool) = self.tool_registry.get(&call.name) {
-                                    let args: serde_json::Value = serde_json::from_str(&call.arguments).unwrap_or_default();
-                                    match tool.execute(args).await {
-                                        Ok(result) => {
-                                            executed.push(ToolCallInfo {
-                                                name: call.name.clone(),
-                                                status: "success".into(),
-                                                duration_ms: None,
-                                            });
-                                            // Feed tool result back to LLM
-                                            msgs.push(providers::ChatMessage {
-                                                role: "tool".into(),
-                                                content: result,
-                                            });
-                                        }
-                                        Err(e) => {
-                                            executed.push(ToolCallInfo {
-                                                name: call.name.clone(),
-                                                status: format!("error: {}", e),
-                                                duration_ms: None,
-                                            });
+
+            if provider.is_empty() {
+                (format!(
+                    "🤖 **Nexus v{}**\n\n⚙️ Configure a provider in Engine Config to get started.\n🔧 {} tools loaded: {}\n💾 Memory: {}\n🧠 Bandit: {} arms tracked",
+                    env!("CARGO_PKG_VERSION"),
+                    self.tool_registry.list().len(),
+                    self.tool_registry.list().join(", "),
+                    if self.memory.is_some() { "active" } else { "disabled" },
+                    bandit_count,
+                ), vec![], String::new(), String::new())
+            } else {
+                match providers::get_provider_config(&provider) {
+                    Ok((base_url, api_key)) => {
+                        let mut msgs = self.build_messages(&sid);
+
+                        // Try with tool calling
+                        let tools = self.tool_registry.to_openai_tools();
+                        match providers::chat_with_tools(&base_url, &api_key, &model, &msgs, &tools).await {
+                            Ok((text, calls)) => {
+                                let mut executed = Vec::new();
+                                for call in &calls {
+                                    if let Some(tool) = self.tool_registry.get(&call.name) {
+                                        let args: serde_json::Value = serde_json::from_str(&call.arguments).unwrap_or_default();
+                                        match tool.execute(args).await {
+                                            Ok(result) => {
+                                                executed.push(ToolCallInfo {
+                                                    name: call.name.clone(),
+                                                    status: "success".into(),
+                                                    duration_ms: None,
+                                                });
+                                                msgs.push(providers::ChatMessage {
+                                                    role: "tool".into(),
+                                                    content: result,
+                                                });
+                                            }
+                                            Err(e) => {
+                                                executed.push(ToolCallInfo {
+                                                    name: call.name.clone(),
+                                                    status: format!("error: {}", e),
+                                                    duration_ms: None,
+                                                });
+                                            }
                                         }
                                     }
                                 }
+                                // If tools were executed, get final response
+                                if !executed.is_empty() {
+                                    let final_text = providers::chat(&base_url, &api_key, &model, &msgs).await?;
+                                    (final_text, executed, provider.clone(), model.clone())
+                                } else {
+                                    (text, vec![], provider.clone(), model.clone())
+                                }
                             }
-                            // If tools were executed, get final response
-                            if !executed.is_empty() {
-                                let final_text = providers::chat(&base_url, &api_key, model, &msgs).await?;
-                                (final_text, executed)
-                            } else {
-                                (text, vec![])
+                            Err(_) => {
+                                // Fall back to plain chat
+                                let text = providers::chat(&base_url, &api_key, &model, &msgs).await?;
+                                (text, vec![], provider.clone(), model.clone())
                             }
-                        }
-                        Err(_) => {
-                            // Fall back to plain chat
-                            let text = providers::chat(&base_url, &api_key, model, &msgs).await?;
-                            (text, vec![])
                         }
                     }
+                    Err(e) => (format!("⚠️ Provider error: {}. Set your API key in %APPDATA%/nexus/.env", e), vec![], provider.clone(), model.clone()),
                 }
-                Err(e) => (format!("⚠️ Provider error: {}. Set your API key in %APPDATA%/nexus/.env", e), vec![], provider.clone(), model.clone()),
             }
-        } else {
-            (format!(
-                "🤖 **Nexus v{}**\n\n⚙️ Configure a provider in Engine Config to get started.\n🔧 {} tools loaded: {}\n💾 Memory: {}\n🧠 Bandit: {} arms tracked",
-                env!("CARGO_PKG_VERSION"),
-                self.tool_registry.list().len(),
-                self.tool_registry.list().join(", "),
-                if self.memory.is_some() { "active" } else { "disabled" },
-                self.bandit.summary().len(),
-            ), vec![], String::new(), String::new())
         };
 
         self.add_message(&sid, "assistant", &result);
+
+        // Record to bandit selector
+        if !selected_provider.is_empty() && !selected_model.is_empty() {
+            let latency = std::time::Instant::now().duration_since(start).as_millis() as f64;
+            // Estimate cost based on approximate token counts
+            let cost = crate::bandit::estimate_cost(&selected_provider, &selected_model, 200, 500);
+            if tool_calls.iter().any(|t| t.status == "success") || !result.starts_with("⚠️") {
+                self.bandit.record_success(&selected_provider, &selected_model, latency, cost);
+            } else {
+                self.bandit.record_failure(&selected_provider, &selected_model, latency, cost);
+            }
+        }
 
         Ok(ChatResponse {
             response: result,
