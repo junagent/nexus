@@ -69,11 +69,15 @@ impl SkillStore {
                 }
                 match std::fs::read_to_string(&path) {
                     Ok(contents) => {
-                        let skill: SkillDef = if path.extension().map_or(false, |e| e == "json") {
-                            serde_json::from_str(&contents)
+                        let skill: Option<SkillDef> = (if path.extension().map_or(false, |e| e == "json") {
+                            serde_json::from_str::<SkillDef>(&contents).ok()
                         } else {
-                            serde_yaml::from_str(&contents)
-                        }.map_err(|e| tracing::warn!("Failed to parse skill {}: {}", path.display(), e)).ok();
+                            serde_yaml::from_str::<SkillDef>(&contents).ok()
+                        });
+
+                        if skill.is_none() {
+                            tracing::warn!("Failed to parse skill {}", path.display());
+                        }
 
                         if let Some(skill) = skill {
                             tracing::info!("Loaded skill: {} v{}", skill.name, skill.version);
