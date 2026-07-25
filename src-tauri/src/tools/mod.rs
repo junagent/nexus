@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 /// A tool that the agent can invoke.
 #[async_trait::async_trait]
-pub trait Tool: Send + Sync {
+pub trait Tool: Send + Sync + std::fmt::Debug {
     /// Unique tool name (used in LLM function calls).
     fn name(&self) -> &str;
     /// Human-readable description for the LLM.
@@ -66,6 +66,7 @@ impl ToolRegistry {
 
 // ---- File System Tools ----
 
+#[derive(Debug)]
 pub struct ReadFileTool;
 
 #[async_trait::async_trait]
@@ -86,6 +87,7 @@ impl Tool for ReadFileTool {
     }
 }
 
+#[derive(Debug)]
 pub struct WriteFileTool;
 
 #[async_trait::async_trait]
@@ -114,6 +116,7 @@ impl Tool for WriteFileTool {
     }
 }
 
+#[derive(Debug)]
 pub struct ListDirTool;
 
 #[async_trait::async_trait]
@@ -149,6 +152,7 @@ impl Tool for ListDirTool {
 
 // ---- Shell Execution Tool ----
 
+#[derive(Debug)]
 pub struct ShellTool;
 
 #[async_trait::async_trait]
@@ -189,6 +193,7 @@ impl Tool for ShellTool {
 
 // ---- Web Tool ----
 
+#[derive(Debug)]
 pub struct WebFetchTool;
 
 #[async_trait::async_trait]
