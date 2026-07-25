@@ -236,6 +236,83 @@ pub async fn chat_with_tools(
     Ok((text, calls))
 }
 
+/// Chat with tool support + streaming. Returns (text_response, tool_calls).
+pub async fn chat_with_tools_stream(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    messages: &[ChatMessage],
+    tools: &[serde_json::Value],
+    on_chunk: impl Fn(&str),
+) -> Result<(String, Vec<FunctionCall>), anyhow::Error> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "tools": tools,
+        "tool_choice": "auto",
+        "max_tokens": 4096,
+        "stream": true,
+    });
+
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("API error {}: {}", status, text));
+    }
+
+    let mut full_response = String::new();
+    let mut calls = Vec::<FunctionCall>::new();
+    let mut stream = resp.bytes_stream();
+
+    use futures_util::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        let text = String::from_utf8_lossy(&chunk);
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line == "data: [DONE]" { continue; }
+            if let Some(json_str) = line.strip_prefix("data: ") {
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    if let Some(delta) = data["choices"][0]["delta"].as_object() {
+                        // Text content
+                        if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
+                            full_response.push_str(content);
+                            on_chunk(content);
+                        }
+                        // Tool calls
+                        if let Some(tool_calls) = delta.get("tool_calls").and_then(|c| c.as_array()) {
+                            for tc in tool_calls {
+                                if let (Some(name), Some(args)) = (
+                                    tc["function"]["name"].as_str(),
+                                    tc["function"]["arguments"].as_str(),
+                                ) {
+                                    calls.push(FunctionCall {
+                                        name: name.to_string(),
+                                        arguments: args.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok((full_response, calls))
+}
+
 #[derive(Debug, Clone)]
 pub struct FunctionCall {
     pub name: String,
