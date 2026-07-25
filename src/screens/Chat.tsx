@@ -1,46 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { Message } from "../types";
-import { chatSend } from "../api";
-
-// Simulated streaming for demo — real streaming will use Tauri events
-function useStreamingResponse(
-  setMessages: (fn: (prev: Message[]) => Message[]) => void,
-  sending: boolean,
-  setSending: (v: boolean) => void,
-  input: string,
-  setInput: (v: string) => void,
-  sessionId: string | null,
-  model: string,
-) {
-  const send = useCallback(async () => {
-    if (!input.trim() || sending) return;
-    const text = input.trim();
-    setInput("");
-    setMessages(m => [...m, { role: "user", content: text }]);
-
-    setSending(true);
-    // Add a placeholder assistant message
-    const msgId = Date.now().toString();
-    setMessages(m => [...m, { role: "assistant", content: "", id: msgId }]);
-
-    try {
-      const response = await chatSend(text, sessionId, model);
-      // Replace the placeholder with the full response
-      setMessages(m => m.map(msg =>
-        msg.id === msgId ? { ...msg, content: response, id: undefined } : msg
-      ));
-    } catch (e) {
-      setMessages(m => m.map(msg =>
-        msg.id === msgId
-          ? { role: "assistant", content: `❌ Error: ${e}`, id: undefined }
-          : msg
-      ));
-    }
-    setSending(false);
-  }, [input, sending, sessionId, model]);
-
-  return send;
-}
+import { chatSend, listSessions } from "../api";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([
@@ -50,35 +12,79 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [model, setModel] = useState("anthropic/claude-sonnet-4");
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [streamingText, setStreamingText] = useState("");
+  const [toolEvents, setToolEvents] = useState<{ tool: string; status: string }[]>([]);
   const [sessions, setSessions] = useState<{ id: string; title: string }[]>([]);
+  const [showSidebar, setShowSidebar] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, streamingText, toolEvents]);
 
   // Load sessions
-  useEffect(() => {
-    import("../api").then(m => m.listSessions().then(s => setSessions(s.map(x => ({ id: x.id, title: x.title })))));
-  }, []);
+  useEffect(() => { listSessions().then(s => setSessions(s.map(x => ({ id: x.id, title: x.title })))); }, []);
 
-  const send = useStreamingResponse(setMessages, sending, setSending, input, setInput, sessionId, model);
+  // Listen for Tauri streaming events
+  useEffect(() => {
+    const unlisten: (() => void)[] = [];
+    const setup = async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten.push(await listen<{ chunk: string; session_id: string }>("nexus://stream/chunk", (e) => {
+        setStreamingText(prev => prev + e.payload.chunk);
+      }));
+      unlisten.push(await listen<{ session_id: string; tool_name: string; status: string; arguments: string; result?: string }>("nexus://stream/tool_call", (e) => {
+        setToolEvents(prev => [...prev, { tool: e.payload.tool_name, status: "running..." }]);
+      }));
+      unlisten.push(await listen<{ session_id: string; tool_name: string; status: string; arguments: string; result?: string }>("nexus://stream/tool_result", (e) => {
+        setToolEvents(prev => {
+          const idx = prev.map(t => t.tool).lastIndexOf(e.payload.tool_name);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = { tool: e.payload.tool_name, status: e.payload.status === "success" ? "✅ done" : "❌ failed" };
+            return copy;
+          }
+          return [...prev, { tool: e.payload.tool_name, status: e.payload.status === "success" ? "✅ done" : "❌ failed" }];
+        });
+      }));
+      unlisten.push(await listen("nexus://stream/done", () => {
+        setMessages(m => {
+          if (streamingText) {
+            return [...m.slice(0, -1), { role: "assistant" as const, content: streamingText }];
+          }
+          return m;
+        });
+        setStreamingText("");
+        setToolEvents([]);
+        setSending(false);
+      }));
+    };
+    setup();
+    return () => unlisten.forEach(fn => fn());
+  }, [streamingText]);
+
+  const send = useCallback(async () => {
+    if (!input.trim() || sending) return;
+    const text = input.trim();
+    setInput("");
+    setMessages(m => [...m, { role: "user", content: text }, { role: "assistant", content: "" }]);
+    setSending(true);
+    try {
+      await chatSend(text, sessionId, model);
+    } catch (e) {
+      setMessages(m => {
+        const copy = [...m];
+        copy[copy.length - 1] = { role: "assistant", content: `❌ Error: ${e}` };
+        return copy;
+      });
+      setSending(false);
+    }
+  }, [input, sessionId, model, sending]);
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-    // Slash command detection
     if (e.key === " " && input.startsWith("/")) {
-      const parts = input.split(" ");
-      const cmd = parts[0].toLowerCase();
-      if (cmd === "/model" && parts[1]) {
-        setModel(parts[1]);
-        setInput("");
-      }
-      if (cmd === "/new") {
-        setMessages([]);
-        setSessionId(null);
-        setInput("");
-      }
+      const cmd = input.split(" ")[0].toLowerCase();
+      if (cmd === "/model" && input.split(" ")[1]) { setModel(input.split(" ")[1]); setInput(""); }
+      if (cmd === "/new") { setMessages([]); setSessionId(null); setInput(""); }
       if (cmd === "/help") {
         setMessages(m => [...m, { role: "assistant", content: "**Slash Commands:**\n- `/model <name>` — switch model\n- `/new` — new conversation\n- `/help` — this help" }]);
         setInput("");
@@ -88,12 +94,11 @@ export default function ChatScreen() {
 
   return (
     <div className="chat-screen">
-      {/* Top bar */}
       <div className="chat-topbar">
         <button className="topbar-btn" onClick={() => setShowSidebar(!showSidebar)}>☰</button>
         <div className="topbar-tabs">
           {sessions.slice(0, 5).map(s => (
-            <span key={s.id} className="session-tab">{s.title}</span>
+            <span key={s.id} className="session-tab" onClick={() => setSessionId(s.id)}>{s.title}</span>
           ))}
           <button className="topbar-btn" onClick={() => { setMessages([]); setSessionId(null); }}>+ New</button>
         </div>
@@ -103,7 +108,6 @@ export default function ChatScreen() {
       </div>
 
       <div className="chat-body">
-        {/* Sessions sidebar */}
         {showSidebar && (
           <aside className="chat-sidebar">
             <h3 className="sidebar-title">Sessions</h3>
@@ -112,40 +116,66 @@ export default function ChatScreen() {
                 <span className="session-title">{s.title}</span>
               </div>
             ))}
-            {sessions.length === 0 && <p className="text-muted" style={{ padding: 12, fontSize: 12 }}>No sessions yet</p>}
+            {sessions.length === 0 && <p className="text-muted" style={{ padding: 12, fontSize: 12 }}>No sessions</p>}
           </aside>
         )}
 
-        {/* Messages */}
         <div className="messages">
           {messages.map((msg, i) => (
             <div key={i} className={`message message-${msg.role}`}>
-              <div className="message-avatar">
-                {msg.role === "user" ? "👤" : "◆"}
-              </div>
+              <div className="message-avatar">{msg.role === "user" ? "👤" : "◆"}</div>
               <div className="message-bubble">
-                <div className="message-text">{msg.content || (sending && i === messages.length - 1 ? <span className="cursor-blink">▊</span> : "")}</div>
+                {msg.role === "assistant" ? (
+                  <div className="message-text">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <div className="message-text">{msg.content}</div>
+                )}
               </div>
             </div>
           ))}
-          {sending && messages[messages.length - 1]?.content === "" && (
+
+          {/* Streaming text */}
+          {streamingText && (
             <div className="message message-assistant">
               <div className="message-avatar">◆</div>
               <div className="message-bubble">
-                <div className="thinking-dots">
-                  <span className="dot" /><span className="dot" /><span className="dot" />
+                <div className="message-text">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingText}</ReactMarkdown>
+                  <span className="cursor-blink">▊</span>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Tool events */}
+          {toolEvents.length > 0 && (
+            <div className="message message-assistant">
+              <div className="message-avatar">🔧</div>
+              <div className="message-bubble tool-events">
+                {toolEvents.map((t, i) => (
+                  <div key={i} className="tool-event-row">
+                    <span className="tool-event-name">{t.tool}</span>
+                    <span className="tool-event-status">{t.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {sending && !streamingText && (
+            <div className="message message-assistant">
+              <div className="message-avatar">◆</div>
+              <div className="message-bubble"><div className="thinking-dots"><span className="dot" /><span className="dot" /><span className="dot" /></div></div>
             </div>
           )}
           <div ref={endRef} />
         </div>
       </div>
 
-      {/* Input */}
       <div className="input-bar">
         <textarea
-          ref={inputRef}
           className="input-field"
           value={input}
           onChange={e => setInput(e.target.value)}

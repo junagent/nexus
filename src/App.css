@@ -134,6 +134,13 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
 
 .cursor-blink { animation: blinker 1s step-end infinite; color: var(--cyan); }
 @keyframes blinker { 50% { opacity: 0; } }
+
+/* Tool events */
+.message-bubble.tool-events { background: var(--bg2); border: 1px solid rgba(0,212,255,0.2); padding: 8px 12px; min-width: 200px; }
+.tool-event-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
+.tool-event-name { font-family: 'JetBrains Mono', monospace; color: var(--cyan); }
+.tool-event-status { color: var(--text3); }
+
 .thinking-dots { display: flex; gap: 4px; padding: 4px 0; }
 .thinking-dots .dot { width: 6px; height: 6px; background: var(--cyan); border-radius: 50%; animation: bounce 1.4s ease-in-out infinite; }
 .thinking-dots .dot:nth-child(2) { animation-delay: 0.2s; }
