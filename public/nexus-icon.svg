@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="g" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0a1628"/>
+      <stop offset="100%" stop-color="#020810"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#g)"/>
+  <polygon points="128,30 226,190 30,190" fill="none" stroke="#00d4ff" stroke-width="3" opacity="0.7"/>
+  <polygon points="128,65 193,175 63,175" fill="none" stroke="#ff00e4" stroke-width="2.5" opacity="0.5"/>
+  <polygon points="128,92 166,156 90,156" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.4"/>
+  <line x1="128" y1="30" x2="128" y2="226" stroke="#ffffff" stroke-width="0.5" opacity="0.1"/>
+  <line x1="30" y1="128" x2="226" y2="128" stroke="#ffffff" stroke-width="0.5" opacity="0.1"/>
+  <circle cx="128" cy="128" r="12" fill="#00d4ff" opacity="0.8"/>
+  <circle cx="128" cy="128" r="5" fill="#ffffff" opacity="0.95"/>
+</svg>

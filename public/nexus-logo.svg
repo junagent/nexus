@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Glow filter for the network core -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glow-core" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Radial gradient for background -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0a1628"/>
+      <stop offset="100%" stop-color="#020810"/>
+    </radialGradient>
+    <!-- Triangle node gradients -->
+    <linearGradient id="nodeGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#0088ff"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff00e4"/>
+      <stop offset="100%" stop-color="#7b00ff"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00ff88"/>
+      <stop offset="100%" stop-color="#00cc6a"/>
+    </linearGradient>
+    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#88ddff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Dark tech background -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- Grid of intersecting triangles forming a network -->
+  <g stroke-width="1.5" fill="none">
+    
+    <!-- Outer ring - 6 triangles -->
+    <!-- Top-left triangle -->
+    <polygon points="156,60 60,156 156,156" stroke="#00d4ff" opacity="0.4"/>
+    <!-- Top-right triangle -->
+    <polygon points="356,60 452,156 356,156" stroke="#ff00e4" opacity="0.4"/>
+    <!-- Bottom-left triangle -->
+    <polygon points="60,356 156,452 156,356" stroke="#00ff88" opacity="0.4"/>
+    <!-- Bottom-right triangle -->
+    <polygon points="356,356 452,452 452,356" stroke="#ff00e4" opacity="0.4"/>
+    <!-- Top-center triangle -->
+    <polygon points="256,60 352,156 160,156" stroke="#00ff88" opacity="0.3"/>
+    <!-- Bottom-center triangle -->
+    <polygon points="160,356 352,356 256,452" stroke="#00d4ff" opacity="0.3"/>
+
+    <!-- Middle ring - interlocking triangles -->
+    <polygon points="256,130 386,256 126,256" stroke="#00d4ff" opacity="0.6"/>
+    <polygon points="256,382 386,256 126,256" stroke="#ff00e4" opacity="0.6"/>
+
+    <!-- Inner ring - smaller triangles -->
+    <polygon points="256,180 332,256 180,256" stroke="#00d4ff" opacity="0.8"/>
+    <polygon points="256,332 332,256 180,256" stroke="#00ff88" opacity="0.8"/>
+
+    <!-- Connection lines between triangle vertices -->
+    <line x1="60" y1="156" x2="256" y2="60" stroke="#00d4ff" opacity="0.25"/>
+    <line x1="452" y1="156" x2="256" y2="60" stroke="#ff00e4" opacity="0.25"/>
+    <line x1="60" y1="156" x2="60" y2="356" stroke="#00ff88" opacity="0.25"/>
+    <line x1="452" y1="156" x2="452" y2="356" stroke="#ff00e4" opacity="0.25"/>
+    <line x1="60" y1="356" x2="256" y2="452" stroke="#00ff88" opacity="0.25"/>
+    <line x1="452" y1="356" x2="256" y2="452" stroke="#00d4ff" opacity="0.25"/>
+
+    <!-- Diagonal cross-connections -->
+    <line x1="256" y1="60" x2="256" y2="452" stroke="#ffffff" opacity="0.08"/>
+    <line x1="60" y1="256" x2="452" y2="256" stroke="#ffffff" opacity="0.08"/>
+    <line x1="126" y1="126" x2="386" y2="386" stroke="#ffffff" opacity="0.06"/>
+    <line x1="386" y1="126" x2="126" y2="386" stroke="#ffffff" opacity="0.06"/>
+
+    <!-- Data flow particle dots along connections -->
+    <circle cx="158" cy="108" r="3" fill="#00d4ff" opacity="0.8"/>
+    <circle cx="354" cy="108" r="3" fill="#ff00e4" opacity="0.8"/>
+    <circle cx="108" cy="304" r="3" fill="#00ff88" opacity="0.8"/>
+    <circle cx="404" cy="208" r="3" fill="#ff00e4" opacity="0.8"/>
+    <circle cx="156" cy="256" r="2.5" fill="#00ff88" opacity="0.7"/>
+    <circle cx="356" cy="256" r="2.5" fill="#00d4ff" opacity="0.7"/>
+    <circle cx="256" cy="108" r="2.5" fill="#ffffff" opacity="0.6"/>
+    <circle cx="256" cy="404" r="2.5" fill="#ffffff" opacity="0.6"/>
+  </g>
+
+  <!-- Glowing triangle node at vertices -->
+  <!-- Top vertex -->
+  <g filter="url(#glow)">
+    <polygon points="256,68 268,92 244,92" fill="#00d4ff" opacity="0.9"/>
+  </g>
+  <!-- Bottom vertex -->
+  <g filter="url(#glow)">
+    <polygon points="256,444 268,420 244,420" fill="#00ff88" opacity="0.9"/>
+  </g>
+  <!-- Left vertex -->
+  <g filter="url(#glow)">
+    <polygon points="68,256 92,244 92,268" fill="#00ff88" opacity="0.9"/>
+  </g>
+  <!-- Right vertex -->
+  <g filter="url(#glow)">
+    <polygon points="444,256 420,244 420,268" fill="#ff00e4" opacity="0.9"/>
+  </g>
+
+  <!-- Center core - glowing AGI nexus -->
+  <g filter="url(#glow-core)">
+    <circle cx="256" cy="256" r="28" fill="url(#coreGrad)" opacity="0.95"/>
+    <circle cx="256" cy="256" r="16" fill="#ffffff" opacity="0.8"/>
+    <circle cx="256" cy="256" r="6" fill="#ffffff" opacity="1.0"/>
+    <!-- Inner node: tiny triangle at the center -->
+    <polygon points="256,248 262,260 250,260" fill="#00d4ff" opacity="1.0"/>
+  </g>
+
+  <!-- Outer glow halo -->
+  <circle cx="256" cy="256" r="52" fill="none" stroke="#00d4ff" stroke-width="0.5" opacity="0.3"/>
+  <circle cx="256" cy="256" r="68" fill="none" stroke="#ff00e4" stroke-width="0.3" opacity="0.15"/>
+  <circle cx="256" cy="256" r="88" fill="none" stroke="#00ff88" stroke-width="0.2" opacity="0.08"/>
+</svg>
