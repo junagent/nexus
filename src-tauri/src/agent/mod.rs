@@ -193,7 +193,7 @@ impl NexusEngine {
             mcp_client: crate::mcp::McpClient::new(),
                         bandit: crate::bandit::BanditSelector::new(""),
                         skill_store: crate::skill_store::SkillStore::load(&std::path::Path::new("")),
-                        trace_store: crate::trace::TraceStore::new(100),
+                        trace_store: crate::trace::TraceStore::new(1000usize),
                     }
     }
 
