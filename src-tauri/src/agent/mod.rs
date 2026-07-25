@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
+use crate::providers;
 use crate::commands::{
     agent::{ChatResponse, ProviderInfo, ToolCallInfo},
     config::{EnvVar, NexusConfig},
@@ -25,7 +26,7 @@ pub struct NexusEngine {
     pub gateways: HashMap<String, GatewayInfo>,
     pub sessions: HashMap<String, SessionInfo>,
     pub session_count: u32,
-    pub conversations: HashMap<String, Vec<ConversationMessage>>,
+    pub conversations: HashMap<String, Vec<providers::ChatMessage>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +43,15 @@ impl NexusEngine {
             .to_string_lossy()
             .to_string();
 
+        // Load env from ~/.nexus/.env
+        let env_path = dirs_next().join("nexus").join(".env");
+        let env_vars = load_env_file(&env_path);
+
+        // Apply to process environment
+        for (k, v) in &env_vars {
+            std::env::set_var(k, v);
+        }
+
         Self {
             running: true,
             uptime: Instant::now(),
@@ -54,7 +64,7 @@ impl NexusEngine {
                 auto_start: false,
                 data_dir,
             },
-            env_vars: HashMap::new(),
+            env_vars,
             skills: HashMap::new(),
             gateways: HashMap::new(),
             sessions: HashMap::new(),
@@ -63,7 +73,7 @@ impl NexusEngine {
         }
     }
 
-    /// Process a chat message and return a response.
+    /// Process a chat message against real LLM.
     pub async fn process_message(
         &mut self,
         message: &str,
@@ -75,25 +85,27 @@ impl NexusEngine {
 
         self.add_message(&sid, "user", message);
 
-        let response = format!(
-            "🤖 **Nexus v{}**\n\n\
-             Received: \"{}\"\n\n\
-             *Nexus agent engine is active. In production, this delegates to \
-             hermes-agent-rs for full tool use, memory, and multi-provider support.*\n\n\
-             ✅ Active Provider: {}\n\
-             🔧 Skills Loaded: {}\n\
-             🌐 Gateways: {}",
-            env!("CARGO_PKG_VERSION"),
-            message,
-            self.active_model.as_deref().unwrap_or("none configured"),
-            self.skills.len(),
-            self.gateways.len(),
-        );
+        let result = if let (Some(ref provider), Some(ref model)) =
+            (&self.active_provider, &self.active_model)
+        {
+            match providers::get_provider_config(provider) {
+                Ok((base_url, api_key)) => {
+                    let msgs = self.build_messages(&sid);
+                    providers::chat(&base_url, &api_key, model, &msgs).await?
+                }
+                Err(e) => format!("⚠️ Provider error: {}. Set your API key in %APPDATA%/nexus/.env", e),
+            }
+        } else {
+            format!(
+                "🤖 **Nexus v{}**\n\nConfigure an LLM provider in the Engine Config panel (left sidebar).\n\nThen I can call real APIs — OpenAI, Anthropic, DeepSeek, OpenRouter, Google AI — all supported.",
+                env!("CARGO_PKG_VERSION")
+            )
+        };
 
-        self.add_message(&sid, "assistant", &response);
+        self.add_message(&sid, "assistant", &result);
 
         Ok(ChatResponse {
-            response,
+            response: result,
             session_id: sid,
             tool_calls: vec![],
         })
@@ -240,10 +252,9 @@ impl NexusEngine {
 
     fn add_message(&mut self, session_id: &str, role: &str, content: &str) {
         if let Some(messages) = self.conversations.get_mut(session_id) {
-            messages.push(ConversationMessage {
+            messages.push(providers::ChatMessage {
                 role: role.to_string(),
                 content: content.to_string(),
-                timestamp: chrono::Utc::now().to_rfc3339(),
             });
         }
         if let Some(session) = self.sessions.get_mut(session_id) {
@@ -251,6 +262,47 @@ impl NexusEngine {
             session.updated_at = chrono::Utc::now().to_rfc3339();
         }
     }
+
+    fn build_messages(&self, session_id: &str) -> Vec<providers::ChatMessage> {
+        let mut msgs = vec![providers::ChatMessage {
+            role: "system".into(),
+            content: format!(
+                "You are Nexus v{}, an intelligent desktop AI agent. \
+                 Be concise, helpful, and direct. Use markdown for formatting. \
+                 You run as a native Rust + Tauri application.",
+                env!("CARGO_PKG_VERSION")
+            ),
+        }];
+
+        if let Some(history) = self.conversations.get(session_id) {
+            // Take last 20 messages to stay within context limits
+            let start = if history.len() > 20 { history.len() - 20 } else { 0 };
+            msgs.extend(history[start..].to_vec());
+        }
+
+        msgs
+    }
+}
+
+/// Load .env file in KEY=VALUE format.
+fn load_env_file(path: &std::path::Path) -> HashMap<String, String> {
+    let mut vars = HashMap::new();
+    if let Ok(contents) = std::fs::read_to_string(path) {
+        for line in contents.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some((k, v)) = line.split_once('=') {
+                let k = k.trim();
+                let v = v.trim().trim_matches('"').trim_matches('\'');
+                if !k.is_empty() {
+                    vars.insert(k.to_string(), v.to_string());
+                }
+            }
+        }
+    }
+    vars
 }
 
 /// Get the user's data directory.

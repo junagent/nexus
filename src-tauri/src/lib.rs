@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod commands;
+pub mod providers;
 
 use tauri::Manager;
 
