@@ -10,6 +10,9 @@ import McpScreen from "./screens/Mcp";
 import TraceScreen from "./screens/Trace";
 import BanditScreen from "./screens/Bandit";
 import ApprovalsScreen from "./screens/Approvals";
+import MemoryScreen from "./screens/Memory";
+import GatewayScreen from "./screens/Gateway";
+import SchedulesScreen from "./screens/Schedules";
 import SettingsScreen from "./screens/Settings";
 import "./App.css";
 
@@ -37,6 +40,9 @@ function App() {
       case "providers": return <ProvidersScreen />;
       case "skills": return <SkillsScreen />;
       case "mcp": return <McpScreen />;
+      case "gateway": return <GatewayScreen />;
+      case "schedules": return <SchedulesScreen />;
+      case "memory": return <MemoryScreen />;
       case "trace": return <TraceScreen />;
       case "bandit": return <BanditScreen />;
       case "approvals": return <ApprovalsScreen />;
