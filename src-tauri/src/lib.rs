@@ -2,6 +2,7 @@ pub mod agent;
 pub mod commands;
 pub mod providers;
 pub mod tools;
+pub mod mcp;
 
 use tauri::Manager;
 
@@ -47,7 +48,12 @@ pub fn run() {
             commands::gateway::toggle_gateway,
             commands::sessions::list_sessions,
             commands::sessions::delete_session,
+            commands::mcp::list_mcp_servers,
+            commands::mcp::add_mcp_server,
+            commands::mcp::remove_mcp_server,
+            commands::mcp::connect_mcp_server,
+            commands::mcp::call_mcp_tool,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Nexus");
+        .expect("error when running Nexus");
 }

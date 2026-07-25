@@ -96,6 +96,7 @@ pub struct NexusEngine {
     pub conversations: HashMap<String, Vec<providers::ChatMessage>>,
     pub tool_registry: ToolRegistry,
     pub memory: Option<MemoryStore>,
+    pub mcp_client: crate::mcp::McpClient,
 }
 
 impl NexusEngine {
@@ -113,10 +114,20 @@ impl NexusEngine {
         let db_path = dirs_next().join("nexus").join("memory.db");
         engine.memory = MemoryStore::new(&db_path.to_string_lossy()).ok();
 
+        // Load MCP config and try to connect
+        let mcp_path = dirs_next().join("nexus").join("mcp.json");
+        if mcp_path.exists() {
+            engine.mcp_client.load_config(&mcp_path);
+            let servers: Vec<String> = engine.mcp_client.list_servers().iter()
+                .map(|s| s.name.clone()).collect();
+            tracing::info!("MCP servers configured: {:?}", servers);
+        }
+
         tracing::info!(
-            "Tools registered: {:?} | Memory: {}",
+            "Tools registered: {:?} | Memory: {} | MCP servers: {}",
             engine.tool_registry.list(),
-            engine.memory.is_some()
+            engine.memory.is_some(),
+            engine.mcp_client.list_servers().len()
         );
 
         engine
@@ -155,7 +166,13 @@ impl NexusEngine {
             conversations: HashMap::new(),
             tool_registry: ToolRegistry::new(),
             memory: None,
+            mcp_client: crate::mcp::McpClient::new(),
         }
+    }
+
+    pub fn save_config(&self) {
+        let mcp_path = dirs_next().join("nexus").join("mcp.json");
+        let _ = self.mcp_client.save_config(&mcp_path);
     }
 
     pub async fn process_message(
@@ -329,9 +346,14 @@ impl NexusEngine {
             role: "system".into(),
             content: format!(
                 "You are Nexus v{}, a desktop AI agent. Be concise and helpful. \
-                 You have access to tools: {}. Use tools when appropriate.",
+                 You have access to tools: {}. Use tools when appropriate. \
+                 MCP servers available: {}. You can use MCP tools by requesting them via the tools interface.",
                 env!("CARGO_PKG_VERSION"),
-                self.tool_registry.list().join(", ")
+                self.tool_registry.list().join(", "),
+                self.mcp_client.list_servers().iter()
+                    .map(|s| format!("{} ({} tools)", s.name, s.tools.len()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
         }];
         if let Some(history) = self.conversations.get(session_id) {
