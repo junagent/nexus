@@ -28,3 +28,4 @@ src-tauri/gen/
 
 # Logs
 *.log
+*.7z

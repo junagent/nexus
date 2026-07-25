@@ -1,127 +1,83 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 160" width="600" height="160">
   <defs>
-    <!-- Glow filter for the network core -->
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="8" result="blur"/>
+    <!-- Glow for the X core -->
+    <filter id="x-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
-    <filter id="glow-core" x="-100%" y="-100%" width="300%" height="300%">
-      <feGaussianBlur stdDeviation="16" result="blur"/>
+    <filter id="x-core-glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
-    <!-- Radial gradient for background -->
-    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#0a1628"/>
-      <stop offset="100%" stop-color="#020810"/>
-    </radialGradient>
-    <!-- Triangle node gradients -->
-    <linearGradient id="nodeGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+    <!-- Gradients -->
+    <linearGradient id="g-main" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#00d4ff"/>
-      <stop offset="100%" stop-color="#0088ff"/>
+      <stop offset="50%" stop-color="#7b00ff"/>
+      <stop offset="100%" stop-color="#ff00e4"/>
     </linearGradient>
-    <linearGradient id="nodeGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff00e4"/>
-      <stop offset="100%" stop-color="#7b00ff"/>
-    </linearGradient>
-    <linearGradient id="nodeGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="g-x" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#00ff88"/>
-      <stop offset="100%" stop-color="#00cc6a"/>
-    </linearGradient>
-    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#88ddff"/>
+      <stop offset="50%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#ff00e4"/>
     </linearGradient>
   </defs>
 
-  <!-- Dark tech background -->
-  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- Dark background circle/pill for contrast -->
+  <rect x="0" y="20" width="600" height="120" rx="60" fill="#0a0e1a" opacity="0.5"/>
 
-  <!-- Grid of intersecting triangles forming a network -->
-  <g stroke-width="1.5" fill="none">
-    
-    <!-- Outer ring - 6 triangles -->
-    <!-- Top-left triangle -->
-    <polygon points="156,60 60,156 156,156" stroke="#00d4ff" opacity="0.4"/>
-    <!-- Top-right triangle -->
-    <polygon points="356,60 452,156 356,156" stroke="#ff00e4" opacity="0.4"/>
-    <!-- Bottom-left triangle -->
-    <polygon points="60,356 156,452 156,356" stroke="#00ff88" opacity="0.4"/>
-    <!-- Bottom-right triangle -->
-    <polygon points="356,356 452,452 452,356" stroke="#ff00e4" opacity="0.4"/>
-    <!-- Top-center triangle -->
-    <polygon points="256,60 352,156 160,156" stroke="#00ff88" opacity="0.3"/>
-    <!-- Bottom-center triangle -->
-    <polygon points="160,356 352,356 256,452" stroke="#00d4ff" opacity="0.3"/>
-
-    <!-- Middle ring - interlocking triangles -->
-    <polygon points="256,130 386,256 126,256" stroke="#00d4ff" opacity="0.6"/>
-    <polygon points="256,382 386,256 126,256" stroke="#ff00e4" opacity="0.6"/>
-
-    <!-- Inner ring - smaller triangles -->
-    <polygon points="256,180 332,256 180,256" stroke="#00d4ff" opacity="0.8"/>
-    <polygon points="256,332 332,256 180,256" stroke="#00ff88" opacity="0.8"/>
-
-    <!-- Connection lines between triangle vertices -->
-    <line x1="60" y1="156" x2="256" y2="60" stroke="#00d4ff" opacity="0.25"/>
-    <line x1="452" y1="156" x2="256" y2="60" stroke="#ff00e4" opacity="0.25"/>
-    <line x1="60" y1="156" x2="60" y2="356" stroke="#00ff88" opacity="0.25"/>
-    <line x1="452" y1="156" x2="452" y2="356" stroke="#ff00e4" opacity="0.25"/>
-    <line x1="60" y1="356" x2="256" y2="452" stroke="#00ff88" opacity="0.25"/>
-    <line x1="452" y1="356" x2="256" y2="452" stroke="#00d4ff" opacity="0.25"/>
-
-    <!-- Diagonal cross-connections -->
-    <line x1="256" y1="60" x2="256" y2="452" stroke="#ffffff" opacity="0.08"/>
-    <line x1="60" y1="256" x2="452" y2="256" stroke="#ffffff" opacity="0.08"/>
-    <line x1="126" y1="126" x2="386" y2="386" stroke="#ffffff" opacity="0.06"/>
-    <line x1="386" y1="126" x2="126" y2="386" stroke="#ffffff" opacity="0.06"/>
-
-    <!-- Data flow particle dots along connections -->
-    <circle cx="158" cy="108" r="3" fill="#00d4ff" opacity="0.8"/>
-    <circle cx="354" cy="108" r="3" fill="#ff00e4" opacity="0.8"/>
-    <circle cx="108" cy="304" r="3" fill="#00ff88" opacity="0.8"/>
-    <circle cx="404" cy="208" r="3" fill="#ff00e4" opacity="0.8"/>
-    <circle cx="156" cy="256" r="2.5" fill="#00ff88" opacity="0.7"/>
-    <circle cx="356" cy="256" r="2.5" fill="#00d4ff" opacity="0.7"/>
-    <circle cx="256" cy="108" r="2.5" fill="#ffffff" opacity="0.6"/>
-    <circle cx="256" cy="404" r="2.5" fill="#ffffff" opacity="0.6"/>
+  <!-- N letter -->
+  <g transform="translate(30, 30)">
+    <path d="M10,100 L10,10 L40,10 L70,100 L70,10 L100,10 L100,100 L60,100 L25,20 L25,100 Z" fill="#e0e8ff" opacity="0.9"/>
   </g>
 
-  <!-- Glowing triangle node at vertices -->
-  <!-- Top vertex -->
-  <g filter="url(#glow)">
-    <polygon points="256,68 268,92 244,92" fill="#00d4ff" opacity="0.9"/>
-  </g>
-  <!-- Bottom vertex -->
-  <g filter="url(#glow)">
-    <polygon points="256,444 268,420 244,420" fill="#00ff88" opacity="0.9"/>
-  </g>
-  <!-- Left vertex -->
-  <g filter="url(#glow)">
-    <polygon points="68,256 92,244 92,268" fill="#00ff88" opacity="0.9"/>
-  </g>
-  <!-- Right vertex -->
-  <g filter="url(#glow)">
-    <polygon points="444,256 420,244 420,268" fill="#ff00e4" opacity="0.9"/>
+  <!-- E letter -->
+  <g transform="translate(135, 30)">
+    <rect x="10" y="10" width="80" height="12" rx="2" fill="#e0e8ff" opacity="0.9"/>
+    <rect x="10" y="78" width="80" height="12" rx="2" fill="#e0e8ff" opacity="0.9"/>
+    <rect x="10" y="44" width="65" height="12" rx="2" fill="#e0e8ff" opacity="0.7"/>
+    <rect x="10" y="10" width="12" height="90" rx="2" fill="#e0e8ff" opacity="0.9"/>
   </g>
 
-  <!-- Center core - glowing AGI nexus -->
-  <g filter="url(#glow-core)">
-    <circle cx="256" cy="256" r="28" fill="url(#coreGrad)" opacity="0.95"/>
-    <circle cx="256" cy="256" r="16" fill="#ffffff" opacity="0.8"/>
-    <circle cx="256" cy="256" r="6" fill="#ffffff" opacity="1.0"/>
-    <!-- Inner node: tiny triangle at the center -->
-    <polygon points="256,248 262,260 250,260" fill="#00d4ff" opacity="1.0"/>
+  <!-- X letter -- THE CORE. Intersecting triangles form the X -->
+  <g transform="translate(235, 0)" filter="url(#x-glow)">
+    <!-- X as intersecting triangles -->
+    <!-- Left-right stroke -->
+    <polygon points="60,30 100,70 60,110 20,70" fill="none" stroke="url(#g-x)" stroke-width="4" opacity="0.9"/>
+    <!-- Left stroke outer glow triangle -->
+    <polygon points="60,30 100,70 60,110 20,70" fill="none" stroke="#00d4ff" stroke-width="1.5" opacity="0.3"/>
+
+    <!-- Inner triangle node at center -->
+    <polygon points="60,58 72,70 48,70" fill="#00ff88" opacity="0.8" filter="url(#x-core-glow)"/>
+
+    <!-- Center core glow -->
+    <circle cx="60" cy="70" r="4" fill="#ffffff" filter="url(#x-core-glow)"/>
   </g>
 
-  <!-- Outer glow halo -->
-  <circle cx="256" cy="256" r="52" fill="none" stroke="#00d4ff" stroke-width="0.5" opacity="0.3"/>
-  <circle cx="256" cy="256" r="68" fill="none" stroke="#ff00e4" stroke-width="0.3" opacity="0.15"/>
-  <circle cx="256" cy="256" r="88" fill="none" stroke="#00ff88" stroke-width="0.2" opacity="0.08"/>
+  <!-- U letter -->
+  <g transform="translate(350, 30)">
+    <rect x="10" y="10" width="12" height="72" rx="2" fill="#e0e8ff" opacity="0.9"/>
+    <rect x="68" y="10" width="12" height="72" rx="2" fill="#e0e8ff" opacity="0.9"/>
+    <rect x="10" y="82" width="70" height="12" rx="2" fill="#e0e8ff" opacity="0.9"/>
+    <path d="M22,10 Q40,0 68,10" fill="none" stroke="#e0e8ff" stroke-width="3" opacity="0.3"/>
+  </g>
+
+  <!-- S letter -->
+  <g transform="translate(445, 30)">
+    <path d="M75,20 Q75,10 55,10 L25,10 Q10,10 10,25 Q10,45 75,50 Q80,50 80,70 Q80,90 50,90 L20,90 Q10,90 10,75" fill="none" stroke="#e0e8ff" stroke-width="11" stroke-linecap="round" opacity="0.9"/>
+  </g>
+
+  <!-- Tagline / slogan -->
+  <text x="300" y="135" font-family="'Helvetica Neue', Arial, sans-serif" font-size="11" letter-spacing="4" fill="#4a5578" text-anchor="middle" text-transform="uppercase">
+    The Core of Your AGI
+  </text>
+
+  <!-- Bottom accent line -->
+  <line x1="200" y1="140" x2="400" y2="140" stroke="url(#g-main)" stroke-width="1" opacity="0.3"/>
 </svg>

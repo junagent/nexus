@@ -89,66 +89,126 @@ body {
   opacity: 0.3;
 }
 
-.sidebar-logo {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 24px 20px;
+/* ===== BRAND WORDMARK — NEXUS ===== */
+.sidebar-header {
+  padding: 28px 20px 20px;
   border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
 
-.logo-triangle {
-  width: 48px;
-  height: 48px;
+.brand-wordmark {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 32px;
+  letter-spacing: 2px;
+  height: 48px;
   position: relative;
+  user-select: none;
 }
 
-.logo-triangle::before {
-  content: '';
+.brand-wordmark .letter-n,
+.brand-wordmark .letter-e,
+.brand-wordmark .letter-u,
+.brand-wordmark .letter-s {
+  color: #e0e8ff;
+  text-shadow: 0 0 10px rgba(224, 232, 255, 0.15);
+  transition: text-shadow 0.3s;
+}
+
+.brand-wordmark:hover .letter-n,
+.brand-wordmark:hover .letter-e,
+.brand-wordmark:hover .letter-u,
+.brand-wordmark:hover .letter-s {
+  text-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+}
+
+/* X letter — the core visual identity */
+.letter-x-core {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 48px;
+  color: transparent;
+  margin: 0 -2px;
+}
+
+/* Left triangle arm of X */
+.x-tri-left {
   position: absolute;
-  width: 56px; height: 56px;
-  background: radial-gradient(circle, rgba(0, 212, 255, 0.15), transparent 70%);
-  animation: pulse-core 3s ease-in-out infinite;
+  width: 0;
+  height: 0;
+  border-left: 12px solid transparent;
+  border-right: 12px solid transparent;
+  border-bottom: 22px solid var(--accent-cyan);
+  opacity: 0.8;
+  transform: rotate(-45deg);
+  top: 10px;
+  left: 8px;
+  filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.4));
+  transition: all 0.3s;
+}
+
+/* Right triangle arm of X */
+.x-tri-right {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-left: 12px solid transparent;
+  border-right: 12px solid transparent;
+  border-bottom: 22px solid var(--accent-pink);
+  opacity: 0.8;
+  transform: rotate(45deg);
+  top: 10px;
+  right: 8px;
+  filter: drop-shadow(0 0 6px rgba(255, 0, 228, 0.4));
+  transition: all 0.3s;
+}
+
+/* Center dot — the core glow */
+.x-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #ffffff;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.8), 0 0 24px rgba(0, 212, 255, 0.4);
+  animation: pulse-core 2s ease-in-out infinite;
 }
 
 @keyframes pulse-core {
-  0%, 100% { transform: scale(1); opacity: 0.15; }
-  50% { transform: scale(1.2); opacity: 0.3; }
+  0%, 100% { box-shadow: 0 0 12px rgba(0, 212, 255, 0.8), 0 0 24px rgba(0, 212, 255, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(0, 212, 255, 1), 0 0 40px rgba(0, 212, 255, 0.6); }
 }
 
-.logo-svg {
-  width: 44px;
-  height: 44px;
-  position: relative;
-  z-index: 1;
-  filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.3));
+.brand-wordmark:hover .x-tri-left {
+  border-bottom-color: var(--accent-green);
+  filter: drop-shadow(0 0 10px rgba(0, 255, 136, 0.6));
+}
+.brand-wordmark:hover .x-tri-right {
+  border-bottom-color: var(--accent-cyan);
+  filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.6));
 }
 
-.logo-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.logo-title {
+.brand-slogan {
   font-family: 'JetBrains Mono', monospace;
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: 6px;
-  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  line-height: 1.1;
-}
-
-.logo-subtitle {
-  font-size: 10px;
+  font-size: 9px;
+  letter-spacing: 4px;
   color: var(--text-muted);
-  letter-spacing: 2px;
   text-transform: uppercase;
-  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
 }
 
 /* Status */

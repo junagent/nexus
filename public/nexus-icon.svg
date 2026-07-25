@@ -1,17 +1,63 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
   <defs>
-    <radialGradient id="g" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#0a1628"/>
-      <stop offset="100%" stop-color="#020810"/>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="core-glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00ff88"/>
+      <stop offset="50%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#ff00e4"/>
+    </linearGradient>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0d1225"/>
+      <stop offset="100%" stop-color="#060a14"/>
     </radialGradient>
   </defs>
-  <rect width="256" height="256" fill="url(#g)"/>
-  <polygon points="128,30 226,190 30,190" fill="none" stroke="#00d4ff" stroke-width="3" opacity="0.7"/>
-  <polygon points="128,65 193,175 63,175" fill="none" stroke="#ff00e4" stroke-width="2.5" opacity="0.5"/>
-  <polygon points="128,92 166,156 90,156" fill="none" stroke="#00ff88" stroke-width="2" opacity="0.4"/>
-  <line x1="128" y1="30" x2="128" y2="226" stroke="#ffffff" stroke-width="0.5" opacity="0.1"/>
-  <line x1="30" y1="128" x2="226" y2="128" stroke="#ffffff" stroke-width="0.5" opacity="0.1"/>
-  <circle cx="128" cy="128" r="12" fill="#00d4ff" opacity="0.8"/>
-  <circle cx="128" cy="128" r="5" fill="#ffffff" opacity="0.95"/>
+
+  <!-- Background -->
+  <rect width="256" height="256" fill="url(#bg)" rx="48"/>
+
+  <!-- X as intersecting triangles - backbone strokes -->
+  <g filter="url(#glow)">
+    <!-- Primary triangle heading right -->
+    <polygon points="128,38 200,128 128,218" fill="none" stroke="#00d4ff" stroke-width="3" opacity="0.6"/>
+    <!-- Primary triangle heading left -->
+    <polygon points="128,38 56,128 128,218" fill="none" stroke="#ff00e4" stroke-width="3" opacity="0.6"/>
+
+    <!-- Inner triangle layer 1 -->
+    <polygon points="128,65 178,128 128,191" fill="none" stroke="#00d4ff" stroke-width="2" opacity="0.5"/>
+    <polygon points="128,65 78,128 128,191" fill="none" stroke="#ff00e4" stroke-width="2" opacity="0.5"/>
+
+    <!-- Inner triangle layer 2 (core X) -->
+    <polygon points="128,85 158,128 128,171" fill="none" stroke="#00ff88" stroke-width="1.5" opacity="0.4"/>
+    <polygon points="128,85 98,128 128,171" fill="none" stroke="#00ff88" stroke-width="1.5" opacity="0.4"/>
+
+    <!-- Horizontal connection lines -->
+    <line x1="56" y1="128" x2="200" y2="128" stroke="#ffffff" stroke-width="0.5" opacity="0.15"/>
+    <line x1="128" y1="38" x2="128" y2="218" stroke="#ffffff" stroke-width="0.5" opacity="0.15"/>
+  </g>
+
+  <!-- Central core glow -->
+  <g filter="url(#core-glow)">
+    <circle cx="128" cy="128" r="14" fill="#00d4ff" opacity="0.7"/>
+    <circle cx="128" cy="128" r="7" fill="#ffffff" opacity="0.9"/>
+  </g>
+
+  <!-- Small triangle at center -->
+  <polygon points="128,121 135,133 121,133" fill="#ffffff" opacity="0.95"/>
+
+  <!-- Outer border -->
+  <rect x="2" y="2" width="252" height="252" rx="46" fill="none" stroke="#1a2350" stroke-width="1" opacity="0.5"/>
 </svg>
