@@ -16,6 +16,7 @@ export default function ChatScreen() {
   const [toolEvents, setToolEvents] = useState<{ tool: string; status: string }[]>([]);
   const [sessions, setSessions] = useState<{ id: string; title: string }[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [estTokens, setEstTokens] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, streamingText, toolEvents]);
@@ -175,10 +176,17 @@ export default function ChatScreen() {
       </div>
 
       <div className="input-bar">
+        <div className="input-toolbar">
+          <button className="input-toolbar-btn" title="Attach file">📎</button>
+          <div className="context-gauge">
+            <div className="context-gauge-fill" style={{ width: `${Math.min(estTokens / 100, 100)}%` }} />
+            <span className="context-gauge-text">{estTokens > 0 ? `${estTokens.toFixed(0)}K` : ""}</span>
+          </div>
+        </div>
         <textarea
           className="input-field"
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={e => { setInput(e.target.value); setEstTokens(e.target.value.length * 0.75 / 1000); }}
           onKeyDown={handleKey}
           placeholder="Message Nexus... (/model, /new, /help)"
           rows={1}
