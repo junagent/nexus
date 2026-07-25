@@ -294,18 +294,6 @@ impl NexusEngine {
             }
         }
 
-        // Record to bandit selector
-        if !selected_provider.is_empty() && !selected_model.is_empty() {
-            let latency = start.elapsed().as_millis() as f64;
-            let cost = crate::bandit::estimate_cost(&selected_provider, &selected_model, 200, 500);
-            let ok = !result.starts_with("⚠️") || tool_calls.iter().any(|t| t.status == "success");
-            if ok {
-                self.bandit.record_success(&selected_provider, &selected_model, latency, cost);
-            } else {
-                self.bandit.record_failure(&selected_provider, &selected_model, latency, cost);
-            }
-        }
-
         Ok(ChatResponse {
             response: result,
             session_id: sid,
