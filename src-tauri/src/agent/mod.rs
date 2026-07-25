@@ -206,13 +206,13 @@ impl NexusEngine {
 
         self.add_message(&sid, "user", message);
 
+        let start = std::time::Instant::now();
         let (result, tool_calls, selected_provider, selected_model) = {
             let (provider, model) = match (&self.active_provider, &self.active_model) {
                 (Some(p), Some(m)) => (p.clone(), m.clone()),
                 _ => (String::new(), String::new()),
             };
             let bandit_count = self.bandit.summary().len();
-            let start = std::time::Instant::now();
 
             if provider.is_empty() {
                 (format!(
@@ -282,10 +282,11 @@ impl NexusEngine {
 
         // Record to bandit selector
         if !selected_provider.is_empty() && !selected_model.is_empty() {
-            let latency = std::time::Instant::now().duration_since(start).as_millis() as f64;
-            // Estimate cost based on approximate token counts
+            let latency = start.elapsed().as_millis() as f64;
             let cost = crate::bandit::estimate_cost(&selected_provider, &selected_model, 200, 500);
-            if tool_calls.iter().any(|t| t.status == "success") || !result.starts_with("⚠️") {
+            // Check if the response was successful (no error prefix, or has tool calls)
+            let ok = !result.starts_with("⚠️") || tool_calls.iter().any(|t| t.status == "success");
+            if ok {
                 self.bandit.record_success(&selected_provider, &selected_model, latency, cost);
             } else {
                 self.bandit.record_failure(&selected_provider, &selected_model, latency, cost);
