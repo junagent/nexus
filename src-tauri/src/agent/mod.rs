@@ -204,7 +204,20 @@ impl NexusEngine {
             .map(|s| s.to_string())
             .unwrap_or_else(|| self.create_session());
 
-        self.add_message(&sid, "user", message);
+        // Add user message directly (not via self to avoid borrow conflict)
+        {
+            let msgs = self.conversations.get_mut(&sid);
+            if let Some(msgs) = msgs {
+                msgs.push(providers::ChatMessage { role: "user".into(), content: message.to_string() });
+            }
+            if let Some(ref memory) = self.memory {
+                let _ = memory.save_message(&sid, "user", message);
+            }
+            if let Some(s) = self.sessions.get_mut(&sid) {
+                s.message_count += 1;
+                s.updated_at = chrono::Utc::now().to_rfc3339();
+            }
+        }
 
         let start = std::time::Instant::now();
         let (provider, model) = match (&self.active_provider, &self.active_model) {
@@ -239,27 +252,15 @@ impl NexusEngine {
                                         let args: serde_json::Value = serde_json::from_str(&call.arguments).unwrap_or_default();
                                         match tool.execute(args).await {
                                             Ok(result) => {
-                                                executed.push(ToolCallInfo {
-                                                    name: call.name.clone(),
-                                                    status: "success".into(),
-                                                    duration_ms: None,
-                                                });
-                                                msgs.push(providers::ChatMessage {
-                                                    role: "tool".into(),
-                                                    content: result,
-                                                });
+                                                executed.push(ToolCallInfo { name: call.name.clone(), status: "success".into(), duration_ms: None });
+                                                msgs.push(providers::ChatMessage { role: "tool".into(), content: result });
                                             }
                                             Err(e) => {
-                                                executed.push(ToolCallInfo {
-                                                    name: call.name.clone(),
-                                                    status: format!("error: {}", e),
-                                                    duration_ms: None,
-                                                });
+                                                executed.push(ToolCallInfo { name: call.name.clone(), status: format!("error: {}", e), duration_ms: None });
                                             }
                                         }
                                     }
                                 }
-                                // If tools were executed, get final response
                                 if !executed.is_empty() {
                                     let final_text = providers::chat(&base_url, &api_key, &model, &msgs).await?;
                                     (final_text, executed, provider.clone(), model.clone())
@@ -268,7 +269,6 @@ impl NexusEngine {
                                 }
                             }
                             Err(_) => {
-                                // Fall back to plain chat
                                 let text = providers::chat(&base_url, &api_key, &model, &msgs).await?;
                                 (text, vec![], provider.clone(), model.clone())
                             }
@@ -279,13 +279,25 @@ impl NexusEngine {
             }
         };
 
-        self.add_message(&sid, "assistant", &result);
+        // Add assistant message (inline to avoid borrow conflict)
+        {
+            let msgs = self.conversations.get_mut(&sid);
+            if let Some(msgs) = msgs {
+                msgs.push(providers::ChatMessage { role: "assistant".into(), content: result.clone() });
+            }
+            if let Some(ref memory) = self.memory {
+                let _ = memory.save_message(&sid, "assistant", &result);
+            }
+            if let Some(s) = self.sessions.get_mut(&sid) {
+                s.message_count += 1;
+                s.updated_at = chrono::Utc::now().to_rfc3339();
+            }
+        }
 
         // Record to bandit selector
         if !selected_provider.is_empty() && !selected_model.is_empty() {
             let latency = start.elapsed().as_millis() as f64;
             let cost = crate::bandit::estimate_cost(&selected_provider, &selected_model, 200, 500);
-            // Check if the response was successful (no error prefix, or has tool calls)
             let ok = !result.starts_with("⚠️") || tool_calls.iter().any(|t| t.status == "success");
             if ok {
                 self.bandit.record_success(&selected_provider, &selected_model, latency, cost);
