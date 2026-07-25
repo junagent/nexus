@@ -5,6 +5,7 @@ pub mod providers;
 pub mod tools;
 pub mod mcp;
 pub mod skill_store;
+pub mod trace;
 
 use tauri::Manager;
 
@@ -59,6 +60,9 @@ pub fn run() {
             commands::mcp::call_mcp_tool,
             commands::bandit::bandit_stats,
             commands::bandit::bandit_select,
+            commands::trace::trace_query,
+            commands::trace::trace_clear,
+            commands::trace::trace_count,
         ])
         .run(tauri::generate_context!())
         .expect("error when running Nexus");

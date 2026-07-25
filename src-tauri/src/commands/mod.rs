@@ -6,3 +6,4 @@ pub mod mcp;
 pub mod sessions;
 pub mod skills;
 pub mod system;
+pub mod trace;

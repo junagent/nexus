@@ -96,6 +96,7 @@ pub struct NexusEngine {
     pub mcp_client: crate::mcp::McpClient,
     pub bandit: crate::bandit::BanditSelector,
     pub skill_store: crate::skill_store::SkillStore,
+    pub trace_store: crate::trace::TraceStore,
 }
 
 impl NexusEngine {
@@ -129,6 +130,9 @@ impl NexusEngine {
         // Initialize skill store
         let skills_dir = dirs_next().join("nexus").join("skills");
         engine.skill_store = crate::skill_store::SkillStore::load(&skills_dir);
+
+        // Initialize trace store
+        engine.trace_store = crate::trace::TraceStore::new(1000);
 
         // Register all provider arms in the bandit selector
         for (provider, models) in &[
@@ -189,6 +193,7 @@ impl NexusEngine {
             mcp_client: crate::mcp::McpClient::new(),
                         bandit: crate::bandit::BanditSelector::new(""),
                         skill_store: crate::skill_store::SkillStore::load(&std::path::Path::new("")),
+                        trace_store: crate::trace::TraceStore::new(100),
                     }
     }
 
@@ -229,6 +234,12 @@ impl NexusEngine {
         let tool_list = self.tool_registry.list();
         let memory_status = if self.memory.is_some() { "active" } else { "disabled" };
         let bandit_count = self.bandit.summary().len();
+
+        // Trace: LLM request
+        if !provider.is_empty() {
+            self.trace_store.record_llm_request(&sid, &provider, &model, message);
+        }
+
         let (result, tool_calls, selected_provider, selected_model) = {
             if provider.is_empty() {
                 (format!(
@@ -301,11 +312,20 @@ impl NexusEngine {
             let latency = start.elapsed().as_millis() as f64;
             let cost = crate::bandit::estimate_cost(&selected_provider, &selected_model, 200, 500);
             let ok = !result.starts_with("⚠️") || tool_calls.iter().any(|t| t.status == "success");
+
+            // Trace: LLM response
+            self.trace_store.record_llm_response(&sid, &selected_provider, &selected_model, &result, latency);
+
             if ok {
                 self.bandit.record_success(&selected_provider, &selected_model, latency, cost);
             } else {
                 self.bandit.record_failure(&selected_provider, &selected_model, latency, cost);
             }
+        }
+
+        // Trace: tool calls
+        for tc in &tool_calls {
+            self.trace_store.record_tool_result(&sid, &tc.name, &tc.status, tc.duration_ms.unwrap_or(0), tc.status == "success");
         }
 
         Ok(ChatResponse {
