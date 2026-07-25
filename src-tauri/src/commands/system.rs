@@ -60,7 +60,7 @@ pub async fn get_status(
         provider_connected: engine.active_provider.is_some(),
         gateway_count: engine.gateways.len() as u32,
         session_count: engine.session_count,
-        skill_count: engine.skills.len() as u32,
+        skill_count: engine.skill_store.list().len() as u32,
         memory_usage_mb: 0.0,
     })
 }
