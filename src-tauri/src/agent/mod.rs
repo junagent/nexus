@@ -9,8 +9,6 @@ use crate::commands::{
     agent::{ChatResponse, ProviderInfo, ToolCallInfo},
     config::{EnvVar, NexusConfig},
     sessions::SessionInfo,
-    skills::SkillInfo,
-    skills::SkillInstallResult,
     gateway::GatewayInfo,
 };
 
@@ -89,7 +87,6 @@ pub struct NexusEngine {
     pub active_model: Option<String>,
     pub config: NexusConfig,
     pub env_vars: HashMap<String, String>,
-    pub skills: HashMap<String, SkillInfo>,
     pub gateways: HashMap<String, GatewayInfo>,
     pub sessions: HashMap<String, SessionInfo>,
     pub session_count: u32,
@@ -183,7 +180,6 @@ impl NexusEngine {
                 data_dir,
             },
             env_vars,
-            skills: HashMap::new(),
             gateways: HashMap::new(),
             sessions: HashMap::new(),
             session_count: 0,
@@ -354,14 +350,6 @@ impl NexusEngine {
     }
 
     pub async fn set_env_var(&mut self, key: &str, value: &str) { self.env_vars.insert(key.to_string(), value.to_string()); }
-
-    pub async fn install_skill(&mut self, source: &str) -> Result<SkillInstallResult, anyhow::Error> {
-        let name = source.split('/').last().unwrap_or(source).trim_end_matches(".git").to_string();
-        self.skills.insert(name.clone(), SkillInfo { name: name.clone(), version: "0.1.0".into(), description: format!("Skill from {}", source), enabled: true });
-        Ok(SkillInstallResult { success: true, name, message: format!("Installed from {}", source) })
-    }
-
-    pub async fn remove_skill(&mut self, name: &str) -> Result<(), anyhow::Error> { self.skills.remove(name); Ok(()) }
 
     pub async fn toggle_gateway(&mut self, id: &str, enable: bool) -> Result<(), anyhow::Error> {
         if let Some(g) = self.gateways.get_mut(id) { g.enabled = enable; }
