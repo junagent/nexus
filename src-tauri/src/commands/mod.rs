@@ -8,3 +8,4 @@ pub mod skills;
 pub mod system;
 pub mod trace;
 pub mod approval;
+pub mod agent_server;
