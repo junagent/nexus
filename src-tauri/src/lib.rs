@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod bandit;
 pub mod commands;
 pub mod providers;
 pub mod tools;
@@ -53,6 +54,8 @@ pub fn run() {
             commands::mcp::remove_mcp_server,
             commands::mcp::connect_mcp_server,
             commands::mcp::call_mcp_tool,
+            commands::bandit::bandit_stats,
+            commands::bandit::bandit_select,
         ])
         .run(tauri::generate_context!())
         .expect("error when running Nexus");

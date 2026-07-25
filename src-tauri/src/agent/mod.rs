@@ -97,6 +97,7 @@ pub struct NexusEngine {
     pub tool_registry: ToolRegistry,
     pub memory: Option<MemoryStore>,
     pub mcp_client: crate::mcp::McpClient,
+    pub bandit: crate::bandit::BanditSelector,
 }
 
 impl NexusEngine {
@@ -123,11 +124,29 @@ impl NexusEngine {
             tracing::info!("MCP servers configured: {:?}", servers);
         }
 
+        // Initialize bandit selector with proper db path
+        let bandit_db = dirs_next().join("nexus").join("bandit.db");
+        engine.bandit = crate::bandit::BanditSelector::new(&bandit_db.to_string_lossy());
+
+        // Register all provider arms in the bandit selector
+        for (provider, models) in &[
+            ("anthropic", &["claude-sonnet-4", "claude-3.5-haiku"] as &[&str]),
+            ("openai", &["gpt-4o", "gpt-4o-mini", "o3-mini"]),
+            ("deepseek", &["deepseek-chat", "deepseek-reasoner"]),
+            ("openrouter", &["anthropic/claude-sonnet-4", "openai/gpt-4o", "google/gemini-2.0-flash"]),
+            ("google", &["gemini-2.0-flash", "gemini-2.5-pro"]),
+        ] {
+            for model in *models {
+                engine.bandit.register_arm(provider, model);
+            }
+        }
+
         tracing::info!(
-            "Tools registered: {:?} | Memory: {} | MCP servers: {}",
+            "Tools registered: {:?} | Memory: {} | MCP servers: {} | Bandit arms: {}",
             engine.tool_registry.list(),
             engine.memory.is_some(),
-            engine.mcp_client.list_servers().len()
+            engine.mcp_client.list_servers().len(),
+            engine.bandit.summary().len()
         );
 
         engine
@@ -167,6 +186,7 @@ impl NexusEngine {
             tool_registry: ToolRegistry::new(),
             memory: None,
             mcp_client: crate::mcp::McpClient::new(),
+            bandit: crate::bandit::BanditSelector::new(""), // will be initialized properly in new_with_tools
         }
     }
 
@@ -186,9 +206,10 @@ impl NexusEngine {
 
         self.add_message(&sid, "user", message);
 
-        let (result, tool_calls) = if let (Some(ref provider), Some(ref model)) =
+        let (result, tool_calls, selected_provider, selected_model) = if let (Some(ref provider), Some(ref model)) =
             (&self.active_provider, &self.active_model)
         {
+            let start = std::time::Instant::now();
             match providers::get_provider_config(provider) {
                 Ok((base_url, api_key)) => {
                     let mut msgs = self.build_messages(&sid);
@@ -239,16 +260,17 @@ impl NexusEngine {
                         }
                     }
                 }
-                Err(e) => (format!("⚠️ Provider error: {}. Set your API key in %APPDATA%/nexus/.env", e), vec![]),
+                Err(e) => (format!("⚠️ Provider error: {}. Set your API key in %APPDATA%/nexus/.env", e), vec![], provider.clone(), model.clone()),
             }
         } else {
             (format!(
-                "🤖 **Nexus v{}**\n\n⚙️ Configure a provider in Engine Config to get started.\n🔧 {} tools loaded: {}\n💾 Memory: {}",
+                "🤖 **Nexus v{}**\n\n⚙️ Configure a provider in Engine Config to get started.\n🔧 {} tools loaded: {}\n💾 Memory: {}\n🧠 Bandit: {} arms tracked",
                 env!("CARGO_PKG_VERSION"),
                 self.tool_registry.list().len(),
                 self.tool_registry.list().join(", "),
                 if self.memory.is_some() { "active" } else { "disabled" },
-            ), vec![])
+                self.bandit.summary().len(),
+            ), vec![], String::new(), String::new())
         };
 
         self.add_message(&sid, "assistant", &result);
