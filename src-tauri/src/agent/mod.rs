@@ -325,7 +325,7 @@ impl NexusEngine {
 
         // Trace: tool calls
         for tc in &tool_calls {
-            self.trace_store.record_tool_result(&sid, &tc.name, &tc.status, tc.duration_ms.unwrap_or(0), tc.status == "success");
+            self.trace_store.record_tool_result(&sid, &tc.name, &tc.status, tc.duration_ms.unwrap_or(0) as f64, tc.status == "success");
         }
 
         Ok(ChatResponse {
