@@ -8,6 +8,7 @@ use crate::commands::{
     config::{EnvVar, NexusConfig},
     sessions::SessionInfo,
     skills::SkillInfo,
+    skills::SkillInstallResult,
     gateway::GatewayInfo,
 };
 
@@ -250,13 +251,6 @@ impl NexusEngine {
             session.updated_at = chrono::Utc::now().to_rfc3339();
         }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SkillInstallResult {
-    pub success: bool,
-    pub name: String,
-    pub message: String,
 }
 
 /// Get the user's data directory.

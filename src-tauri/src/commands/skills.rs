@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::agent::NexusEngine;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillInfo {
     pub name: String,
     pub version: String,
