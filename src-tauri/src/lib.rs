@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod commands;
 pub mod providers;
+pub mod tools;
 
 use tauri::Manager;
 
@@ -20,9 +21,9 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
-            // Initialize the Nexus agent engine
-            let engine = agent::NexusEngine::new();
-            app.manage(engine);
+            // Initialize the Nexus agent engine with tools
+            let agent = agent::NexusEngine::new_with_tools();
+            app.manage(agent);
 
             tracing::info!("Nexus agent engine initialized");
 

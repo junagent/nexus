@@ -4,6 +4,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 
 use crate::providers;
+use crate::tools::{ToolRegistry, ReadFileTool, WriteFileTool, ListDirTool, ShellTool, WebFetchTool};
 use crate::commands::{
     agent::{ChatResponse, ProviderInfo, ToolCallInfo},
     config::{EnvVar, NexusConfig},
@@ -13,7 +14,71 @@ use crate::commands::{
     gateway::GatewayInfo,
 };
 
-/// The core Nexus agent engine.
+// ---- Memory System ----
+
+/// Simple SQLite-backed memory store for persistent chat history.
+pub struct MemoryStore {
+    db: rusqlite::Connection,
+}
+
+impl MemoryStore {
+    pub fn new(path: &str) -> Result<Self, String> {
+        let db = rusqlite::Connection::open(path).map_err(|e| e.to_string())?;
+        db.execute_batch(
+            "CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                model TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT,
+                role TEXT,
+                content TEXT,
+                timestamp TEXT,
+                FOREIGN KEY(session_id) REFERENCES sessions(id)
+            );"
+        ).map_err(|e| e.to_string())?;
+        Ok(Self { db })
+    }
+
+    pub fn save_message(&self, session_id: &str, role: &str, content: &str) -> Result<(), String> {
+        self.db.execute(
+            "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![session_id, role, content, chrono::Utc::now().to_rfc3339()],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_history(&self, session_id: &str, limit: usize) -> Vec<providers::ChatMessage> {
+        let mut stmt = self.db.prepare(
+            "SELECT role, content FROM messages WHERE session_id = ?1 ORDER BY id DESC LIMIT ?2"
+        ).unwrap();
+        let mut msgs: Vec<providers::ChatMessage> = stmt
+            .query_map(rusqlite::params![session_id, limit as i64], |row| {
+                Ok(providers::ChatMessage {
+                    role: row.get(0)?,
+                    content: row.get(1)?,
+                })
+            })
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        msgs.reverse();
+        msgs
+    }
+}
+
+impl std::fmt::Debug for MemoryStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemoryStore").finish()
+    }
+}
+
+// ---- Engine ----
+
 #[derive(Debug)]
 pub struct NexusEngine {
     pub running: bool,
@@ -27,27 +92,43 @@ pub struct NexusEngine {
     pub sessions: HashMap<String, SessionInfo>,
     pub session_count: u32,
     pub conversations: HashMap<String, Vec<providers::ChatMessage>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConversationMessage {
-    pub role: String,
-    pub content: String,
-    pub timestamp: String,
+    pub tool_registry: ToolRegistry,
+    pub memory: Option<MemoryStore>,
 }
 
 impl NexusEngine {
+    pub fn new_with_tools() -> Self {
+        let mut engine = Self::new();
+        
+        // Register built-in tools
+        engine.tool_registry.register(ReadFileTool);
+        engine.tool_registry.register(WriteFileTool);
+        engine.tool_registry.register(ListDirTool);
+        engine.tool_registry.register(ShellTool);
+        engine.tool_registry.register(WebFetchTool);
+
+        // Initialize memory store
+        let db_path = dirs_next().join("nexus").join("memory.db");
+        engine.memory = MemoryStore::new(&db_path.to_string_lossy()).ok();
+
+        tracing::info!(
+            "Tools registered: {:?} | Memory: {}",
+            engine.tool_registry.list(),
+            engine.memory.is_some()
+        );
+
+        engine
+    }
+
     pub fn new() -> Self {
         let data_dir = dirs_next()
             .join("nexus")
             .to_string_lossy()
             .to_string();
 
-        // Load env from ~/.nexus/.env
         let env_path = dirs_next().join("nexus").join(".env");
         let env_vars = load_env_file(&env_path);
 
-        // Apply to process environment
         for (k, v) in &env_vars {
             std::env::set_var(k, v);
         }
@@ -70,10 +151,11 @@ impl NexusEngine {
             sessions: HashMap::new(),
             session_count: 0,
             conversations: HashMap::new(),
+            tool_registry: ToolRegistry::new(),
+            memory: None,
         }
     }
 
-    /// Process a chat message against real LLM.
     pub async fn process_message(
         &mut self,
         message: &str,
@@ -85,21 +167,69 @@ impl NexusEngine {
 
         self.add_message(&sid, "user", message);
 
-        let result = if let (Some(ref provider), Some(ref model)) =
+        let (result, tool_calls) = if let (Some(ref provider), Some(ref model)) =
             (&self.active_provider, &self.active_model)
         {
             match providers::get_provider_config(provider) {
                 Ok((base_url, api_key)) => {
-                    let msgs = self.build_messages(&sid);
-                    providers::chat(&base_url, &api_key, model, &msgs).await?
+                    let mut msgs = self.build_messages(&sid);
+                    
+                    // Try with tool calling
+                    let tools = self.tool_registry.to_openai_tools();
+                    match providers::chat_with_tools(&base_url, &api_key, model, &msgs, &tools).await {
+                        Ok((text, calls)) => {
+                            let mut executed = Vec::new();
+                            for call in &calls {
+                                if let Some(tool) = self.tool_registry.get(&call.name) {
+                                    let args: serde_json::Value = serde_json::from_str(&call.arguments).unwrap_or_default();
+                                    match tool.execute(args).await {
+                                        Ok(result) => {
+                                            executed.push(ToolCallInfo {
+                                                name: call.name.clone(),
+                                                status: "success".into(),
+                                                duration_ms: None,
+                                            });
+                                            // Feed tool result back to LLM
+                                            msgs.push(providers::ChatMessage {
+                                                role: "tool".into(),
+                                                content: result,
+                                            });
+                                        }
+                                        Err(e) => {
+                                            executed.push(ToolCallInfo {
+                                                name: call.name.clone(),
+                                                status: format!("error: {}", e),
+                                                duration_ms: None,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                            // If tools were executed, get final response
+                            if !executed.is_empty() {
+                                let final_text = providers::chat(&base_url, &api_key, model, &msgs).await?;
+                                (final_text, executed)
+                            } else {
+                                (text, vec![])
+                            }
+                        }
+                        Err(_) => {
+                            // Fall back to plain chat
+                            let text = providers::chat(&base_url, &api_key, model, &msgs).await?;
+                            (text, vec![])
+                        }
+                    }
                 }
-                Err(e) => format!("⚠️ Provider error: {}. Set your API key in %APPDATA%/nexus/.env", e),
+                Err(e) => (format!("⚠️ Provider error: {}. Set your API key in %APPDATA%/nexus/.env", e), vec![]),
             }
         } else {
-            format!(
-                "🤖 **Nexus v{}**\n\nConfigure an LLM provider in the Engine Config panel (left sidebar).\n\nThen I can call real APIs — OpenAI, Anthropic, DeepSeek, OpenRouter, Google AI — all supported.",
-                env!("CARGO_PKG_VERSION")
-            )
+            (format!(
+                "🤖 **Nexus v{}**\n\n⚙️ Configure a provider in Engine Config to get started.\n🔧 {} tools loaded: {}\n💾 Memory: {}",
+                env!("CARGO_PKG_VERSION"),
+                self.tool_registry.list().len(),
+                self.tool_registry.list().join(", "),
+                if self.memory.is_some() { "active" } else { "disabled" },
+            ), vec![])
         };
 
         self.add_message(&sid, "assistant", &result);
@@ -107,7 +237,7 @@ impl NexusEngine {
         Ok(ChatResponse {
             response: result,
             session_id: sid,
-            tool_calls: vec![],
+            tool_calls,
         })
     }
 
@@ -123,40 +253,11 @@ impl NexusEngine {
 
     pub fn list_providers(&self) -> Vec<ProviderInfo> {
         vec![
-            ProviderInfo {
-                id: "anthropic".into(),
-                name: "Anthropic Claude".into(),
-                models: vec!["claude-sonnet-4".into(), "claude-3.5-haiku".into()],
-                active: self.active_provider.as_deref() == Some("anthropic"),
-            },
-            ProviderInfo {
-                id: "openai".into(),
-                name: "OpenAI".into(),
-                models: vec!["gpt-4o".into(), "gpt-4o-mini".into(), "o3-mini".into()],
-                active: self.active_provider.as_deref() == Some("openai"),
-            },
-            ProviderInfo {
-                id: "deepseek".into(),
-                name: "DeepSeek".into(),
-                models: vec!["deepseek-chat".into(), "deepseek-reasoner".into()],
-                active: self.active_provider.as_deref() == Some("deepseek"),
-            },
-            ProviderInfo {
-                id: "openrouter".into(),
-                name: "OpenRouter".into(),
-                models: vec![
-                    "anthropic/claude-sonnet-4".into(),
-                    "openai/gpt-4o".into(),
-                    "google/gemini-2.0-flash".into(),
-                ],
-                active: self.active_provider.as_deref() == Some("openrouter"),
-            },
-            ProviderInfo {
-                id: "google".into(),
-                name: "Google AI".into(),
-                models: vec!["gemini-2.0-flash".into(), "gemini-2.5-pro".into()],
-                active: self.active_provider.as_deref() == Some("google"),
-            },
+            ProviderInfo { id: "anthropic".into(), name: "Anthropic Claude".into(), models: vec!["claude-sonnet-4".into(), "claude-3.5-haiku".into()], active: self.active_provider.as_deref() == Some("anthropic") },
+            ProviderInfo { id: "openai".into(), name: "OpenAI".into(), models: vec!["gpt-4o".into(), "gpt-4o-mini".into(), "o3-mini".into()], active: self.active_provider.as_deref() == Some("openai") },
+            ProviderInfo { id: "deepseek".into(), name: "DeepSeek".into(), models: vec!["deepseek-chat".into(), "deepseek-reasoner".into()], active: self.active_provider.as_deref() == Some("deepseek") },
+            ProviderInfo { id: "openrouter".into(), name: "OpenRouter".into(), models: vec!["anthropic/claude-sonnet-4".into(), "openai/gpt-4o".into(), "google/gemini-2.0-flash".into()], active: self.active_provider.as_deref() == Some("openrouter") },
+            ProviderInfo { id: "google".into(), name: "Google AI".into(), models: vec!["gemini-2.0-flash".into(), "gemini-2.5-pro".into()], active: self.active_provider.as_deref() == Some("google") },
         ]
     }
 
@@ -165,69 +266,34 @@ impl NexusEngine {
         self.active_model = Some(model.to_string());
     }
 
-    pub async fn update_config(&mut self, config: NexusConfig) {
-        self.config = config;
-    }
+    pub async fn update_config(&mut self, config: NexusConfig) { self.config = config; }
 
     pub fn list_env_vars(&self) -> Vec<EnvVar> {
-        self.env_vars
-            .iter()
-            .map(|(k, v)| {
-                let masked = v.len() > 8;
-                EnvVar {
-                    key: k.clone(),
-                    value: if masked {
-                        format!("{}...{}", &v[..4], &v[v.len() - 4..])
-                    } else {
-                        v.clone()
-                    },
-                    masked,
-                }
-            })
-            .collect()
+        self.env_vars.iter().map(|(k, v)| {
+            let masked = v.len() > 8;
+            EnvVar { key: k.clone(), value: if masked { format!("{}...{}", &v[..4], &v[v.len()-4..]) } else { v.clone() }, masked }
+        }).collect()
     }
 
-    pub async fn set_env_var(&mut self, key: &str, value: &str) {
-        self.env_vars.insert(key.to_string(), value.to_string());
-    }
+    pub async fn set_env_var(&mut self, key: &str, value: &str) { self.env_vars.insert(key.to_string(), value.to_string()); }
 
     pub async fn install_skill(&mut self, source: &str) -> Result<SkillInstallResult, anyhow::Error> {
         let name = source.split('/').last().unwrap_or(source).trim_end_matches(".git").to_string();
-        self.skills.insert(
-            name.clone(),
-            SkillInfo {
-                name: name.clone(),
-                version: "0.1.0".into(),
-                description: format!("Skill from {}", source),
-                enabled: true,
-            },
-        );
-        Ok(SkillInstallResult {
-            success: true,
-            name,
-            message: format!("Installed from {}", source),
-        })
+        self.skills.insert(name.clone(), SkillInfo { name: name.clone(), version: "0.1.0".into(), description: format!("Skill from {}", source), enabled: true });
+        Ok(SkillInstallResult { success: true, name, message: format!("Installed from {}", source) })
     }
 
-    pub async fn remove_skill(&mut self, name: &str) -> Result<(), anyhow::Error> {
-        self.skills.remove(name);
-        Ok(())
-    }
+    pub async fn remove_skill(&mut self, name: &str) -> Result<(), anyhow::Error> { self.skills.remove(name); Ok(()) }
 
     pub async fn toggle_gateway(&mut self, id: &str, enable: bool) -> Result<(), anyhow::Error> {
-        if let Some(gateway) = self.gateways.get_mut(id) {
-            gateway.enabled = enable;
-        }
+        if let Some(g) = self.gateways.get_mut(id) { g.enabled = enable; }
         Ok(())
     }
 
-    pub fn list_sessions(&self) -> Vec<SessionInfo> {
-        self.sessions.values().cloned().collect()
-    }
+    pub fn list_sessions(&self) -> Vec<SessionInfo> { self.sessions.values().cloned().collect() }
 
     pub async fn delete_session(&mut self, id: &str) -> Result<(), anyhow::Error> {
-        self.sessions.remove(id);
-        self.conversations.remove(id);
+        self.sessions.remove(id); self.conversations.remove(id);
         Ok(())
     }
 
@@ -235,31 +301,24 @@ impl NexusEngine {
         self.session_count += 1;
         let id = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
-        self.sessions.insert(
-            id.clone(),
-            SessionInfo {
-                id: id.clone(),
-                title: format!("Session {}", self.session_count),
-                message_count: 0,
-                created_at: now.clone(),
-                updated_at: now,
-                model: self.active_model.clone().unwrap_or_default(),
-            },
-        );
+        self.sessions.insert(id.clone(), SessionInfo {
+            id: id.clone(), title: format!("Session {}", self.session_count),
+            message_count: 0, created_at: now.clone(), updated_at: now,
+            model: self.active_model.clone().unwrap_or_default(),
+        });
         self.conversations.insert(id.clone(), vec![]);
         id
     }
 
     fn add_message(&mut self, session_id: &str, role: &str, content: &str) {
-        if let Some(messages) = self.conversations.get_mut(session_id) {
-            messages.push(providers::ChatMessage {
-                role: role.to_string(),
-                content: content.to_string(),
-            });
+        if let Some(msgs) = self.conversations.get_mut(session_id) {
+            msgs.push(providers::ChatMessage { role: role.to_string(), content: content.to_string() });
         }
-        if let Some(session) = self.sessions.get_mut(session_id) {
-            session.message_count += 1;
-            session.updated_at = chrono::Utc::now().to_rfc3339();
+        if let Some(ref memory) = self.memory {
+            let _ = memory.save_message(session_id, role, content);
+        }
+        if let Some(s) = self.sessions.get_mut(session_id) {
+            s.message_count += 1; s.updated_at = chrono::Utc::now().to_rfc3339();
         }
     }
 
@@ -267,71 +326,51 @@ impl NexusEngine {
         let mut msgs = vec![providers::ChatMessage {
             role: "system".into(),
             content: format!(
-                "You are Nexus v{}, an intelligent desktop AI agent. \
-                 Be concise, helpful, and direct. Use markdown for formatting. \
-                 You run as a native Rust + Tauri application.",
-                env!("CARGO_PKG_VERSION")
+                "You are Nexus v{}, a desktop AI agent. Be concise and helpful. \
+                 You have access to tools: {}. Use tools when appropriate.",
+                env!("CARGO_PKG_VERSION"),
+                self.tool_registry.list().join(", ")
             ),
         }];
-
         if let Some(history) = self.conversations.get(session_id) {
-            // Take last 20 messages to stay within context limits
             let start = if history.len() > 20 { history.len() - 20 } else { 0 };
             msgs.extend(history[start..].to_vec());
         }
-
         msgs
     }
 }
 
-/// Load .env file in KEY=VALUE format.
+// ---- Helpers ----
+
 fn load_env_file(path: &std::path::Path) -> HashMap<String, String> {
     let mut vars = HashMap::new();
     if let Ok(contents) = std::fs::read_to_string(path) {
         for line in contents.lines() {
             let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
+            if line.is_empty() || line.starts_with('#') { continue; }
             if let Some((k, v)) = line.split_once('=') {
                 let k = k.trim();
                 let v = v.trim().trim_matches('"').trim_matches('\'');
-                if !k.is_empty() {
-                    vars.insert(k.to_string(), v.to_string());
-                }
+                if !k.is_empty() { vars.insert(k.to_string(), v.to_string()); }
             }
         }
     }
     vars
 }
 
-/// Get the user's data directory.
 fn dirs_next() -> std::path::PathBuf {
-    #[cfg(target_os = "linux")]
-    {
-        std::env::var("XDG_DATA_HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| {
-                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-                std::path::PathBuf::from(home).join(".local/share")
-            })
+    #[cfg(target_os = "linux")] {
+        std::env::var("XDG_DATA_HOME").map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())).join(".local/share"))
     }
-    #[cfg(target_os = "macos")]
-    {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        std::path::PathBuf::from(home).join("Library/Application Support")
+    #[cfg(target_os = "macos")] {
+        std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())).join("Library/Application Support")
     }
-    #[cfg(target_os = "windows")]
-    {
-        std::env::var("APPDATA")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| {
-                let home = std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\".into());
-                std::path::PathBuf::from(home).join("AppData/Roaming")
-            })
+    #[cfg(target_os = "windows")] {
+        std::env::var("APPDATA").map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from(std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\".into())).join("AppData/Roaming"))
     }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))] {
         std::path::PathBuf::from(".")
     }
 }

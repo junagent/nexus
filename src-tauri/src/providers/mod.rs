@@ -178,3 +178,66 @@ pub fn get_provider_config(provider: &str) -> Result<(String, String)> {
         _ => Err(anyhow!("Unknown provider: {}", provider)),
     }
 }
+
+/// Chat with tool support. Returns (text_response, tool_calls).
+pub async fn chat_with_tools(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    messages: &[ChatMessage],
+    tools: &[serde_json::Value],
+) -> Result<(String, Vec<FunctionCall>), anyhow::Error> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "tools": tools,
+        "tool_choice": "auto",
+        "max_tokens": 4096,
+    });
+
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("API error {}: {}", status, text));
+    }
+
+    let data: serde_json::Value = resp.json().await?;
+    let choice = data["choices"][0].clone();
+    let msg = choice["message"].clone();
+
+    let text = msg["content"].as_str().unwrap_or("").to_string();
+
+    let mut calls = Vec::new();
+    if let Some(tool_calls) = msg["tool_calls"].as_array() {
+        for tc in tool_calls {
+            if let (Some(name), Some(args)) = (
+                tc["function"]["name"].as_str(),
+                tc["function"]["arguments"].as_str(),
+            ) {
+                calls.push(FunctionCall {
+                    name: name.to_string(),
+                    arguments: args.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok((text, calls))
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String,
+}
