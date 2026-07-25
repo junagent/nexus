@@ -207,12 +207,12 @@ impl NexusEngine {
         self.add_message(&sid, "user", message);
 
         let start = std::time::Instant::now();
+        let bandit_count = self.bandit.summary().len();
         let (result, tool_calls, selected_provider, selected_model) = {
             let (provider, model) = match (&self.active_provider, &self.active_model) {
                 (Some(p), Some(m)) => (p.clone(), m.clone()),
                 _ => (String::new(), String::new()),
             };
-            let bandit_count = self.bandit.summary().len();
 
             if provider.is_empty() {
                 (format!(
