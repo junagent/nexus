@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tauri::{ipc::InvokeError, State};
+use tauri::State;
 use tokio::sync::Mutex;
 
 use crate::agent::NexusEngine;
