@@ -98,6 +98,7 @@ pub struct NexusEngine {
     pub memory: Option<MemoryStore>,
     pub mcp_client: crate::mcp::McpClient,
     pub bandit: crate::bandit::BanditSelector,
+    pub skill_store: crate::skill_store::SkillStore,
 }
 
 impl NexusEngine {
@@ -127,6 +128,10 @@ impl NexusEngine {
         // Initialize bandit selector with proper db path
         let bandit_db = dirs_next().join("nexus").join("bandit.db");
         engine.bandit = crate::bandit::BanditSelector::new(&bandit_db.to_string_lossy());
+
+        // Initialize skill store
+        let skills_dir = dirs_next().join("nexus").join("skills");
+        engine.skill_store = crate::skill_store::SkillStore::load(&skills_dir);
 
         // Register all provider arms in the bandit selector
         for (provider, models) in &[
@@ -186,8 +191,9 @@ impl NexusEngine {
             tool_registry: ToolRegistry::new(),
             memory: None,
             mcp_client: crate::mcp::McpClient::new(),
-            bandit: crate::bandit::BanditSelector::new(""), // will be initialized properly in new_with_tools
-        }
+                        bandit: crate::bandit::BanditSelector::new(""),
+                        skill_store: crate::skill_store::SkillStore::load(&std::path::Path::new("")),
+                    }
     }
 
     pub fn save_config(&self) {
@@ -398,16 +404,23 @@ impl NexusEngine {
         let mut msgs = vec![providers::ChatMessage {
             role: "system".into(),
             content: format!(
-                "You are Nexus v{}, a desktop AI agent. Be concise and helpful. \
-                 You have access to tools: {}. Use tools when appropriate. \
-                 MCP servers available: {}. You can use MCP tools by requesting them via the tools interface.",
-                env!("CARGO_PKG_VERSION"),
-                self.tool_registry.list().join(", "),
-                self.mcp_client.list_servers().iter()
-                    .map(|s| format!("{} ({} tools)", s.name, s.tools.len()))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
+                            "You are Nexus v{}, a desktop AI agent. Be concise and helpful. \
+                             You have access to tools: {}. Use tools when appropriate. \
+                             MCP servers available: {}. \
+                             Active skills: {}. \
+                             You can use MCP tools by requesting them via the tools interface.",
+                            env!("CARGO_PKG_VERSION"),
+                            self.tool_registry.list().join(", "),
+                            self.mcp_client.list_servers().iter()
+                                .map(|s| format!("{} ({} tools)", s.name, s.tools.len()))
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                            self.skill_store.list().iter()
+                                .filter(|s| s.enabled)
+                                .map(|s| s.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        ),
         }];
         if let Some(history) = self.conversations.get(session_id) {
             let start = if history.len() > 20 { history.len() - 20 } else { 0 };

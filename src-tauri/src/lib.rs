@@ -4,6 +4,7 @@ pub mod commands;
 pub mod providers;
 pub mod tools;
 pub mod mcp;
+pub mod skill_store;
 
 use tauri::Manager;
 
@@ -45,6 +46,8 @@ pub fn run() {
             commands::skills::list_skills,
             commands::skills::install_skill,
             commands::skills::remove_skill,
+            commands::skills::toggle_skill,
+            commands::skills::reload_skills,
             commands::gateway::list_gateways,
             commands::gateway::toggle_gateway,
             commands::sessions::list_sessions,
