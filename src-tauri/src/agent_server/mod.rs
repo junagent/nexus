@@ -1,11 +1,14 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::convert::Infallible;
 use axum::{
     Router, Json, extract::State, routing::{get, post},
-    response::IntoResponse,
+    response::{IntoResponse, sse::{Sse, Event, KeepAlive}},
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
+use tokio::sync::mpsc;
+use futures::stream::{self, Stream};
 
 use crate::agent::NexusEngine;
 
@@ -44,6 +47,7 @@ pub async fn start_server(engine: SharedEngine, port: u16) -> SocketAddr {
         .route("/health", get(health))
         .route("/api/status", get(get_status))
         .route("/api/chat", post(chat_handler))
+        .route("/api/chat/stream", get(chat_stream_handler))
         .route("/api/trace", get(trace_handler))
         .route("/api/providers", get(providers_handler))
         .route("/api/skills", get(skills_handler))
@@ -113,6 +117,80 @@ async fn chat_handler(
     }
 }
 
+/// SSE streaming endpoint: GET /api/chat/stream?message=...&provider=...&model=...
+async fn chat_stream_handler(
+    State(engine): State<SharedEngine>,
+    axum::extract::Query(params): axum::extract::Query<ChatStreamParams>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(100);
+
+    // Spawn task to stream response
+    let engine_clone = engine.clone();
+    tokio::spawn(async move {
+        let mut engine = engine_clone.lock().await;
+        if let (Some(p), Some(m)) = (&params.provider, &params.model) {
+            engine.active_provider = Some(p.clone());
+            engine.active_model = Some(m.clone());
+        }
+
+        // Send start event
+        let _ = tx.send(Ok(Event::default().data(
+            serde_json::json!({"event": "start"}).to_string()
+        ))).await;
+
+        match engine.process_message_stream(&params.message, None).await {
+            Ok(mut rx_stream) => {
+                while let Some(chunk) = rx_stream.recv().await {
+                    let ev = match chunk {
+                        crate::agent::StreamEvent::Chunk(text) => {
+                            Event::default().data(
+                                serde_json::json!({"event": "chunk", "content": text}).to_string()
+                            )
+                        }
+                        crate::agent::StreamEvent::ToolCall { name, input } => {
+                            Event::default().data(
+                                serde_json::json!({"event": "tool_call", "name": name, "content": input}).to_string()
+                            )
+                        }
+                        crate::agent::StreamEvent::ToolResult { name, output } => {
+                            Event::default().data(
+                                serde_json::json!({"event": "tool_result", "name": name, "content": output}).to_string()
+                            )
+                        }
+                        crate::agent::StreamEvent::Done { response } => {
+                            Event::default().data(
+                                serde_json::json!({"event": "done", "content": response}).to_string()
+                            )
+                        }
+                    };
+                    let _ = tx.send(Ok(ev)).await;
+                }
+            }
+            Err(e) => {
+                let _ = tx.send(Ok(Event::default().data(
+                    serde_json::json!({"event": "error", "content": e.to_string()}).to_string()
+                ))).await;
+            }
+        }
+
+        // Send final done event
+        let _ = tx.send(Ok(Event::default().data(
+            serde_json::json!({"event": "done"}).to_string()
+        ))).await;
+    });
+
+    Sse::new(stream::unfold(rx, |mut rx| async move {
+        rx.recv().await.map(|item| (item, rx))
+    })).keep_alive(KeepAlive::default())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChatStreamParams {
+    pub message: String,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+}
+
 async fn trace_handler(State(engine): State<SharedEngine>) -> Json<Vec<serde_json::Value>> {
     let engine = engine.lock().await;
     let traces: Vec<serde_json::Value> = engine.trace_store.query(None, 50).iter()
@@ -126,8 +204,10 @@ async fn trace_handler(State(engine): State<SharedEngine>) -> Json<Vec<serde_jso
 
 async fn providers_handler() -> Json<serde_json::Value> {
     Json(serde_json::json!({
-        "providers": ["anthropic", "openai", "deepseek", "openrouter", "google"],
+        "providers": ["github", "groq", "openrouter", "openai", "anthropic", "deepseek", "google"],
         "models": {
+            "github": ["gpt-4o", "gpt-4o-mini"],
+            "groq": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
             "anthropic": ["claude-sonnet-4", "claude-3.5-haiku"],
             "openai": ["gpt-4o", "gpt-4o-mini", "o3-mini"],
             "deepseek": ["deepseek-chat", "deepseek-reasoner"],

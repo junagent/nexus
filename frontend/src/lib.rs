@@ -194,42 +194,7 @@ fn chat_screen() -> Html {
     let streaming_text = use_state(|| String::new());
     let tool_events = use_state(|| Vec::<(String, String)>::new());
 
-    // Listen for Tauri streaming events: nexus://stream/chunk, tool_call, tool_result, done
-    {
-        let streaming_text = streaming_text.clone();
-        let tool_events = tool_events.clone();
-        let messages = messages.clone();
-        let streaming = streaming.clone();
-        use_effect_with((), move |_| {
-            // Tauri event listener via wasm-bindgen
-            let window = web_sys::window().unwrap();
-            let listener = Closure::wrap(Box::new(move |event: js_sys::JsString| {
-                let s: String = event.into();
-                // Parse event name + payload from the custom event
-                if s.starts_with("nexus://stream/chunk:") {
-                    let chunk = &s["nexus://stream/chunk:".len()..];
-                    streaming_text.set(format!("{}{}", *streaming_text, chunk));
-                } else if s.starts_with("nexus://stream/done:") {
-                    // Finalize streaming text into a message
-                    let text = (*streaming_text).clone();
-                    if !text.is_empty() {
-                        let mut msgs = (*messages).clone();
-                        msgs.push(Message { role: "assistant".into(), content: text });
-                        messages.set(msgs);
-                    }
-                    streaming_text.set(String::new());
-                    streaming.set(false);
-                }
-            }) as Box<dyn FnMut(js_sys::JsString)>);
-            window.add_event_listener_with_callback_and_bool_and_bool_and_bool(
-                "nexus-stream", listener.as_ref().as_ref(), false
-            ).unwrap();
-            // Keep listener alive
-            listener.forget();
-            || ()
-        });
-    }
-
+    // Check API key presence
     {
         let needs_setup = needs_setup.clone();
         use_effect_with((), move |_| {
@@ -244,11 +209,27 @@ fn chat_screen() -> Html {
         });
     }
 
+    // Helper: append assistant message from streaming buffer
+    let finalize = {
+        let streaming_text = streaming_text.clone();
+        let messages = messages.clone();
+        let streaming = streaming.clone();
+        Callback::from(move |_| {
+            let text = (*streaming_text).clone();
+            if !text.is_empty() {
+                let mut msgs = (*messages).clone();
+                msgs.push(Message { role: "assistant".into(), content: text });
+                messages.set(msgs);
+            }
+            streaming_text.set(String::new());
+            streaming.set(false);
+        })
+    };
+
     let oninput = {
         let input = input.clone();
         Callback::from(move |e: InputEvent| {
-            let target = e.target_dyn_into::<web_sys::HtmlInputElement>();
-            if let Some(el) = target {
+            if let Some(el) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
                 input.set(el.value());
             }
         })
@@ -257,21 +238,65 @@ fn chat_screen() -> Html {
     let onsend = {
         let input = input.clone();
         let messages = messages.clone();
-        let needs_setup = needs_setup.clone();
         let streaming = streaming.clone();
+        let streaming_text = streaming_text.clone();
+        let tool_events = tool_events.clone();
         Callback::from(move |_| {
             let msg = (*input).clone();
             if msg.trim().is_empty() { return; }
             input.set(String::new());
             streaming.set(true);
+            streaming_text.set(String::new());
+            tool_events.set(Vec::new());
+
             let mut msgs = (*messages).clone();
             msgs.push(Message { role: "user".into(), content: msg.clone() });
             messages.set(msgs);
-            // Call chat_stream via Tauri invoke — backend emits nexus://stream/* events
+
+            // Open SSE stream from agent server
+            let streaming_text = streaming_text.clone();
+            let tool_events = tool_events.clone();
+            // Open SSE stream from agent server (port 18789)
             wasm_bindgen_futures::spawn_local(async move {
-                let _ = tauri_invoke::<String>("chat_stream", jsval(&serde_json::json!({
-                    "request": { "message": msg, "sessionId": None, "model": None }
-                }))).await;
+                let encoded = web_sys::js_sys::encode_uri_component(&msg).as_string().unwrap_or_default();
+                let url = format!("http://localhost:18789/api/chat/stream?message={}&provider=github&model=gpt-4o-mini", encoded);
+                if let Ok(es) = web_sys::EventSource::new(&url) {
+                    let st = streaming_text.clone();
+                    let te = tool_events.clone();
+                    let on_msg = Closure::wrap(Box::new(move |e: web_sys::MessageEvent| {
+                        if let Ok(data) = e.data().dyn_into::<js_sys::JsString>() {
+                            let s: String = data.into();
+                            if s.starts_with("data: ") {
+                                let payload = &s[6..];
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(payload) {
+                                    if let Some(ev) = v.get("event").and_then(|x| x.as_str()) {
+                                        match ev {
+                                            "chunk" => {
+                                                if let Some(c) = v.get("content").and_then(|x| x.as_str()) {
+                                                    st.set(format!("{}{}", *st, c));
+                                                }
+                                            }
+                                            "tool_call" | "tool_result" => {
+                                                let name = v.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                                let content = v.get("content").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                                let mut evs = (*te).clone();
+                                                evs.push((format!("{}: {}", ev, name), content));
+                                                te.set(evs);
+                                            }
+                                            "done" => {
+                                                finalize.emit(());
+                                                es.close();
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }) as Box<dyn FnMut(web_sys::MessageEvent)>);
+                    es.set_onmessage(Some(on_msg.as_ref().unchecked_ref()));
+                    on_msg.forget();
+                }
             });
         })
     };
@@ -282,7 +307,7 @@ fn chat_screen() -> Html {
                 html! {
                     <div class="setup-banner">
                         { "⚙️ No API key configured yet. Go to " }<strong>{ "Providers" }</strong>{ " to paste an API key." }
-                    </div>
+                        We ship GitHub Models + Groq keys pre-filled so it works out of the box.</div>
                 }
             } else {
                 html! {}
@@ -299,22 +324,30 @@ fn chat_screen() -> Html {
                 { if *streaming && !(*streaming_text).is_empty() {
                     html! {
                         <div class={classes!("message", "message-assistant")}>
-                            <div class="message-avatar">◆</div>
-                            <div class="message-bubble">{ (*streaming_text).clone() }<span class="cursor-blink">|</span></div>
+                            <div class="message-avatar">{ "◆" }</div>
+                            <div class="message-bubble">{ (*streaming_text).clone() }<span class="cursor-blink">{ "|" }</span></div>
                         </div>
                     }
                 } else if *streaming {
                     html! {
                         <div class={classes!("message", "message-assistant")}>
-                            <div class="message-avatar">◆</div>
+                            <div class="message-avatar">{ "◆" }</div>
                             <div class="message-bubble">
                                 <span class="thinking-dots">
-                                    <span>.</span><span>.</span><span>.</span>
+                                    <span>{ "." }</span><span>{ "." }</span><span>{ "." }</span>
                                 </span>
                             </div>
                         </div>
                     }
                 }}
+                { for (*tool_events).iter().map(|(label, content)| {
+                    html! {
+                        <div class="tool-event">
+                            <span class="tool-event-label">{ label.clone() }</span>
+                            <span class="tool-event-content">{ content.clone() }</span>
+                        </div>
+                    }
+                })}
             </div>
             <div class="input-bar">
                 <input type="text" class="input-field" value={(*input).clone()} oninput={oninput} placeholder="Type a message..." />

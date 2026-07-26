@@ -12,7 +12,16 @@ use crate::commands::{
     gateway::GatewayInfo,
 };
 
-// ---- Memory System ----
+// ---- Streaming Events ----
+
+/// Events emitted during streaming chat.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StreamEvent {
+    Chunk(String),
+    ToolCall { name: String, input: String },
+    ToolResult { name: String, output: String },
+    Done { response: String },
+}
 
 /// Simple SQLite-backed memory store.
 pub struct MemoryStore {
@@ -344,12 +353,139 @@ impl NexusEngine {
 
     pub async fn process_message_stream(
         &mut self,
-        _app_handle: &tauri::AppHandle,
         message: &str,
         session_id: Option<&str>,
-    ) -> Result<String, anyhow::Error> {
-        let result = self.process_message(message, session_id).await?;
-        Ok(result.response)
+    ) -> Result<tokio::sync::mpsc::Receiver<StreamEvent>, anyhow::Error> {
+        let (tx, rx) = tokio::sync::mpsc::channel(100);
+
+        let sid = session_id
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| self.create_session());
+
+        // Add user message
+        {
+            let msgs = self.conversations.get_mut(&sid);
+            if let Some(msgs) = msgs {
+                msgs.push(providers::ChatMessage { role: "user".into(), content: message.to_string() });
+            }
+            if let Some(ref memory) = self.memory {
+                let _ = memory.save_message(&sid, "user", message);
+            }
+            if let Some(s) = self.sessions.get_mut(&sid) {
+                s.message_count += 1;
+                s.updated_at = chrono::Utc::now().to_rfc3339();
+            }
+        }
+
+        let start = std::time::Instant::now();
+        let (provider, model) = match (&self.active_provider, &self.active_model) {
+            (Some(p), Some(m)) => (p.clone(), m.clone()),
+            _ => (String::new(), String::new()),
+        };
+        let tool_list = self.tool_registry.list();
+        let memory_status = if self.memory.is_some() { "active" } else { "disabled" };
+        let bandit_count = self.bandit.summary().len();
+
+        if !provider.is_empty() {
+            self.trace_store.record_llm_request(&sid, &provider, &model, message);
+        }
+
+        if provider.is_empty() {
+            let resp = format!(
+                "🤖 **Nexus v{}**\n\n⚙️ Configure a provider in Engine Config to get started.\n🔧 {} tools loaded: {}\n💾 Memory: {}\n🧠 Bandit: {} arms tracked",
+                env!("CARGO_PKG_VERSION"),
+                tool_list.len(),
+                tool_list.join(", "),
+                memory_status,
+                bandit_count,
+            );
+            let _ = tx.send(StreamEvent::Chunk(resp.clone())).await;
+            let _ = tx.send(StreamEvent::Done { response: resp }).await;
+            return Ok(rx);
+        }
+
+        // Provider configured: stream response
+        match providers::get_provider_config(&provider) {
+            Ok((base_url, api_key)) => {
+                let msgs = self.build_messages(&sid);
+                let tools = self.tool_registry.to_openai_tools();
+
+                // Stream the main model response (non-tool path first)
+                match providers::chat_with_tools_stream(&base_url, &api_key, &model, &msgs, &tools, |chunk: &str| {
+                    let _ = tx.blocking_send(StreamEvent::Chunk(chunk.to_string()));
+                }).await {
+                    Ok((final_text, calls)) => {
+                        let mut executed = Vec::new();
+                        for call in &calls {
+                            if let Some(tool) = self.tool_registry.get(&call.name) {
+                                let input = call.arguments.clone();
+                                let _ = tx.send(StreamEvent::ToolCall { name: call.name.clone(), input: input.clone() }).await;
+                                let args: serde_json::Value = serde_json::from_str(&call.arguments).unwrap_or_default();
+                                match tool.execute(args).await {
+                                    Ok(result) => {
+                                        executed.push(ToolCallInfo { name: call.name.clone(), status: "success".into(), duration_ms: None });
+                                        let _ = tx.send(StreamEvent::ToolResult { name: call.name.clone(), output: result.clone() }).await;
+                                    }
+                                    Err(e) => {
+                                        executed.push(ToolCallInfo { name: call.name.clone(), status: format!("error: {}", e), duration_ms: None });
+                                        let _ = tx.send(StreamEvent::ToolResult { name: call.name.clone(), output: format!("error: {}", e) }).await;
+                                    }
+                                }
+                            }
+                        }
+                        let final_response = if !executed.is_empty() {
+                            providers::chat(&base_url, &api_key, &model, &msgs).await.unwrap_or(final_text)
+                        } else {
+                            final_text
+                        };
+
+                        // Save assistant message
+                        {
+                            let msgs = self.conversations.get_mut(&sid);
+                            if let Some(msgs) = msgs {
+                                msgs.push(providers::ChatMessage { role: "assistant".into(), content: final_response.clone() });
+                            }
+                            if let Some(ref memory) = self.memory {
+                                let _ = memory.save_message(&sid, "assistant", &final_response);
+                            }
+                            if let Some(s) = self.sessions.get_mut(&sid) {
+                                s.message_count += 1;
+                                s.updated_at = chrono::Utc::now().to_rfc3339();
+                            }
+                        }
+
+                        // Bandit + trace
+                        let latency = start.elapsed().as_millis() as f64;
+                        let cost = crate::bandit::estimate_cost(&provider, &model, 200, 500);
+                        let ok = !final_response.starts_with("⚠️") || executed.iter().any(|t| t.status == "success");
+                        self.trace_store.record_llm_response(&sid, &provider, &model, &final_response, latency);
+                        if ok {
+                            self.bandit.record_success(&provider, &model, latency, cost);
+                        } else {
+                            self.bandit.record_failure(&provider, &model, latency, cost);
+                        }
+                        for tc in &executed {
+                            self.trace_store.record_tool_result(&sid, &tc.name, &tc.status, tc.duration_ms.unwrap_or(0) as f64, tc.status == "success");
+                        }
+
+                        let _ = tx.send(StreamEvent::Done { response: final_response }).await;
+                        return Ok(rx);
+                    }
+                    Err(e) => {
+                        let resp = format!("⚠️ Stream error: {}. {}", e, "Try a different provider in Engine Config.");
+                        let _ = tx.send(StreamEvent::Chunk(resp.clone())).await;
+                        let _ = tx.send(StreamEvent::Done { response: resp }).await;
+                        return Ok(rx);
+                    }
+                }
+            }
+            Err(e) => {
+                let resp = format!("⚠️ Provider error: {}. Set your API key in %APPDATA%/nexus/.env", e);
+                let _ = tx.send(StreamEvent::Chunk(resp.clone())).await;
+                let _ = tx.send(StreamEvent::Done { response: resp }).await;
+                return Ok(rx);
+            }
+        }
     }
 
     pub fn list_providers(&self) -> Vec<ProviderInfo> {
