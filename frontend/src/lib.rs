@@ -509,6 +509,19 @@ fn skills_screen() -> Html {
 #[function_component(McpScreen)]
 fn mcp_screen() -> Html {
     let servers = use_state(|| Vec::<McpServerInfo>::new());
+    let new_name = use_state(|| String::new());
+    let new_command = use_state(|| String::new());
+    let new_args = use_state(|| String::new());
+
+    let refresh = {
+        let servers = servers.clone();
+        Callback::from(move |_| {
+            wasm_bindgen_futures::spawn_local(async move {
+                let s: Vec<McpServerInfo> = tauri_invoke("list_mcp_servers", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                servers.set(s);
+            });
+        })
+    };
 
     use_effect_with((), {
         let servers = servers.clone();
@@ -521,10 +534,57 @@ fn mcp_screen() -> Html {
         }
     });
 
+    let add_server = {
+        let new_name = new_name.clone();
+        let new_command = new_command.clone();
+        let new_args = new_args.clone();
+        let servers = servers.clone();
+        Callback::from(move |_| {
+            let name = (*new_name).clone();
+            let cmd = (*new_command).clone();
+            let args_str = (*new_args).clone();
+            let args: Vec<String> = args_str.split_whitespace().map(|s| s.to_string()).collect();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _ = tauri_invoke::<()>("add_mcp_server", jsval(&serde_json::json!({
+                    "config": { "name": name, "command": cmd, "args": args, "env": {} }
+                }))).await;
+                // Refresh
+                let s: Vec<McpServerInfo> = tauri_invoke("list_mcp_servers", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                servers.set(s);
+            });
+        })
+    };
+
     html! {
         <div class="screen">
             <h2 class="screen-title">{ "MCP" }</h2>
+
+            <div class="config-section">
+                <label class="config-label">{ "Add MCP Server" }</label>
+                <input class="config-input" placeholder="Name" value={(*new_name).clone()} oninput={{
+                    let new_name = new_name.clone();
+                    Callback::from(move |e: InputEvent| {
+                        if let Some(el) = e.target_dyn_into::<web_sys::HtmlInputElement>() { new_name.set(el.value()); }
+                    })
+                }} />
+                <input class="config-input" placeholder="Command (e.g. npx)" value={(*new_command).clone()} oninput={{
+                    let new_command = new_command.clone();
+                    Callback::from(move |e: InputEvent| {
+                        if let Some(el) = e.target_dyn_into::<web_sys::HtmlInputElement>() { new_command.set(el.value()); }
+                    })
+                }} />
+                <input class="config-input" placeholder="Args (space-separated)" value={(*new_args).clone()} oninput={{
+                    let new_args = new_args.clone();
+                    Callback::from(move |e: InputEvent| {
+                        if let Some(el) = e.target_dyn_into::<web_sys::HtmlInputElement>() { new_args.set(el.value()); }
+                    })
+                }} />
+                <button class="btn-primary" onclick={add_server}>{ "Add" }</button>
+            </div>
+
             { for (*servers).iter().map(|s| {
+                let servers = servers.clone();
+                let s_name = s.name.clone();
                 html! {
                     <div class="mcp-server-card" key={s.name.clone()}>
                         <strong>{ &s.name }</strong>
@@ -532,6 +592,16 @@ fn mcp_screen() -> Html {
                         <div class="mcp-server-tools">
                             { for s.tools.iter().map(|t| html! { <span class="tool-tag">{ t }</span> }) }
                         </div>
+                        <button class="btn-sm" onclick={{
+                            let servers = servers.clone();
+                            move |_| {
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    let _ = tauri_invoke::<()>("remove_mcp_server", jsval(&serde_json::json!({"name": s_name.clone()}))).await;
+                                    let s2: Vec<McpServerInfo> = tauri_invoke("list_mcp_servers", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                                    servers.set(s2);
+                                });
+                            }
+                        }}>{ "Remove" }</button>
                     </div>
                 }
             })}
