@@ -190,6 +190,45 @@ fn chat_screen() -> Html {
     let input = use_state(|| String::new());
     let messages = use_state(|| Vec::<Message>::new());
     let needs_setup = use_state(|| false);
+    let streaming = use_state(|| false);
+    let streaming_text = use_state(|| String::new());
+    let tool_events = use_state(|| Vec::<(String, String)>::new());
+
+    // Listen for Tauri streaming events: nexus://stream/chunk, tool_call, tool_result, done
+    {
+        let streaming_text = streaming_text.clone();
+        let tool_events = tool_events.clone();
+        let messages = messages.clone();
+        let streaming = streaming.clone();
+        use_effect_with((), move |_| {
+            // Tauri event listener via wasm-bindgen
+            let window = web_sys::window().unwrap();
+            let listener = Closure::wrap(Box::new(move |event: js_sys::JsString| {
+                let s: String = event.into();
+                // Parse event name + payload from the custom event
+                if s.starts_with("nexus://stream/chunk:") {
+                    let chunk = &s["nexus://stream/chunk:".len()..];
+                    streaming_text.set(format!("{}{}", *streaming_text, chunk));
+                } else if s.starts_with("nexus://stream/done:") {
+                    // Finalize streaming text into a message
+                    let text = (*streaming_text).clone();
+                    if !text.is_empty() {
+                        let mut msgs = (*messages).clone();
+                        msgs.push(Message { role: "assistant".into(), content: text });
+                        messages.set(msgs);
+                    }
+                    streaming_text.set(String::new());
+                    streaming.set(false);
+                }
+            }) as Box<dyn FnMut(js_sys::JsString)>);
+            window.add_event_listener_with_callback_and_bool_and_bool_and_bool(
+                "nexus-stream", listener.as_ref().as_ref(), false
+            ).unwrap();
+            // Keep listener alive
+            listener.forget();
+            || ()
+        });
+    }
 
     {
         let needs_setup = needs_setup.clone();
@@ -219,13 +258,21 @@ fn chat_screen() -> Html {
         let input = input.clone();
         let messages = messages.clone();
         let needs_setup = needs_setup.clone();
+        let streaming = streaming.clone();
         Callback::from(move |_| {
             let msg = (*input).clone();
             if msg.trim().is_empty() { return; }
             input.set(String::new());
+            streaming.set(true);
             let mut msgs = (*messages).clone();
             msgs.push(Message { role: "user".into(), content: msg.clone() });
             messages.set(msgs);
+            // Call chat_stream via Tauri invoke — backend emits nexus://stream/* events
+            wasm_bindgen_futures::spawn_local(async move {
+                let _ = tauri_invoke::<String>("chat_stream", jsval(&serde_json::json!({
+                    "request": { "message": msg, "sessionId": None, "model": None }
+                }))).await;
+            });
         })
     };
 
@@ -249,6 +296,25 @@ fn chat_screen() -> Html {
                         </div>
                     }
                 })}
+                { if *streaming && !(*streaming_text).is_empty() {
+                    html! {
+                        <div class={classes!("message", "message-assistant")}>
+                            <div class="message-avatar">◆</div>
+                            <div class="message-bubble">{ (*streaming_text).clone() }<span class="cursor-blink">|</span></div>
+                        </div>
+                    }
+                } else if *streaming {
+                    html! {
+                        <div class={classes!("message", "message-assistant")}>
+                            <div class="message-avatar">◆</div>
+                            <div class="message-bubble">
+                                <span class="thinking-dots">
+                                    <span>.</span><span>.</span><span>.</span>
+                                </span>
+                            </div>
+                        </div>
+                    }
+                }}
             </div>
             <div class="input-bar">
                 <input type="text" class="input-field" value={(*input).clone()} oninput={oninput} placeholder="Type a message..." />
