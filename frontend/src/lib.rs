@@ -307,7 +307,8 @@ fn chat_screen() -> Html {
                 html! {
                     <div class="setup-banner">
                         { "⚙️ No API key configured yet. Go to " }<strong>{ "Providers" }</strong>{ " to paste an API key." }
-                        We ship GitHub Models + Groq keys pre-filled so it works out of the box.</div>
+                        { " We ship GitHub Models + Groq keys pre-filled so it works out of the box." }
+                    </div>
                 }
             } else {
                 html! {}
@@ -339,6 +340,8 @@ fn chat_screen() -> Html {
                             </div>
                         </div>
                     }
+                } else {
+                    html! {}
                 }}
                 { for (*tool_events).iter().map(|(label, content)| {
                     html! {
@@ -549,6 +552,7 @@ fn mcp_screen() -> Html {
     let refresh = {
         let servers = servers.clone();
         Callback::from(move |_| {
+            let servers = servers.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let s: Vec<McpServerInfo> = tauri_invoke("list_mcp_servers", jsval(&serde_json::json!({}))).await.unwrap_or_default();
                 servers.set(s);
@@ -577,6 +581,7 @@ fn mcp_screen() -> Html {
             let cmd = (*new_command).clone();
             let args_str = (*new_args).clone();
             let args: Vec<String> = args_str.split_whitespace().map(|s| s.to_string()).collect();
+            let servers = servers.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let _ = tauri_invoke::<()>("add_mcp_server", jsval(&serde_json::json!({
                     "config": { "name": name, "command": cmd, "args": args, "env": {} }
@@ -625,16 +630,14 @@ fn mcp_screen() -> Html {
                         <div class="mcp-server-tools">
                             { for s.tools.iter().map(|t| html! { <span class="tool-tag">{ t }</span> }) }
                         </div>
-                        <button class="btn-sm" onclick={{
+                        <button class="btn-sm" onclick={Callback::from(move |_| {
                             let servers = servers.clone();
-                            move |_| {
-                                wasm_bindgen_futures::spawn_local(async move {
-                                    let _ = tauri_invoke::<()>("remove_mcp_server", jsval(&serde_json::json!({"name": s_name.clone()}))).await;
-                                    let s2: Vec<McpServerInfo> = tauri_invoke("list_mcp_servers", jsval(&serde_json::json!({}))).await.unwrap_or_default();
-                                    servers.set(s2);
-                                });
-                            }
-                        }}>{ "Remove" }</button>
+                            wasm_bindgen_futures::spawn_local(async move {
+                                let _ = tauri_invoke::<()>("remove_mcp_server", jsval(&serde_json::json!({"name": s_name.clone()}))).await;
+                                let s2: Vec<McpServerInfo> = tauri_invoke("list_mcp_servers", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                                servers.set(s2);
+                            });
+                        })}>{ "Remove" }</button>
                     </div>
                 }
             })}
