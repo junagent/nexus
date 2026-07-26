@@ -67,5 +67,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nexus-${{ matrix.os }}-${{ matrix.target }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.ext }}/*
+          path: target/${{ matrix.target }}/release/bundle/${{ matrix.ext }}/*
           if-no-files-found: warn
