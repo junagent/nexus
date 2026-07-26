@@ -539,7 +539,7 @@ fn skills_screen() -> Html {
     let install = {
         let skills = skills.clone();
         let install_name = install_name.clone();
-        Callback::from(move |_: ()| {
+        Callback::from(move |_| {
             let name = (*install_name).clone();
             if name.trim().is_empty() { return; }
             let skills = skills.clone();
@@ -631,7 +631,7 @@ fn mcp_screen() -> Html {
 
     let refresh = {
         let servers = servers.clone();
-        Callback::from(move |_: ()| {
+        Callback::from(move |_| {
             let servers = servers.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let s: Vec<McpServerInfo> = tauri_invoke("list_mcp_servers", jsval(&serde_json::json!({}))).await.unwrap_or_default();
@@ -748,7 +748,7 @@ fn trace_screen() -> Html {
 
     let clear = {
         let events = events.clone();
-        Callback::from(move |_: ()| {
+        Callback::from(move |_| {
             let events = events.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let _: () = tauri_invoke("trace_clear", jsval(&serde_json::json!({}))).await.unwrap_or_default();
@@ -807,7 +807,7 @@ fn bandit_screen() -> Html {
     let auto_select = {
         let arms = arms.clone();
         let selected = selected.clone();
-        Callback::from(move |_: ()| {
+        Callback::from(move |_| {
             let arms = arms.clone();
             let selected = selected.clone();
             wasm_bindgen_futures::spawn_local(async move {
