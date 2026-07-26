@@ -145,31 +145,31 @@ pub enum Route {
 
 #[function_component(Sidebar)]
 fn sidebar() -> Html {
-    let location = use_location();
-    let current = location.path().to_string();
+    let route = use_route::<Route>();
+    let current = route.clone();
     let items = [
-        ("/chat", "💬", "Chat"),
-        ("/sessions", "📋", "Sessions"),
-        ("/providers", "⚡", "Providers"),
-        ("/skills", "🧠", "Skills"),
-        ("/mcp", "🔌", "MCP"),
-        ("/gateway", "🌐", "Gateway"),
-        ("/schedules", "⏰", "Schedules"),
-        ("/memory", "💾", "Memory"),
-        ("/trace", "📊", "Trace"),
-        ("/bandit", "🎰", "Bandit"),
-        ("/approvals", "🔒", "Approvals"),
-        ("/settings", "⚙️", "Settings"),
+        (Route::Chat, "💬", "Chat"),
+        (Route::Sessions, "📋", "Sessions"),
+        (Route::Providers, "⚡", "Providers"),
+        (Route::Skills, "🧠", "Skills"),
+        (Route::Mcp, "🔌", "MCP"),
+        (Route::Gateway, "🌐", "Gateway"),
+        (Route::Schedules, "⏰", "Schedules"),
+        (Route::Memory, "💾", "Memory"),
+        (Route::Trace, "📊", "Trace"),
+        (Route::Bandit, "🎰", "Bandit"),
+        (Route::Approvals, "🔒", "Approvals"),
+        (Route::Settings, "⚙️", "Settings"),
     ];
 
     html! {
         <div class="sidebar">
             <div class="sidebar-logo">{ "NEXUS" }</div>
             <div class="sidebar-nav">
-                { for items.iter().map(|(path, icon, label)| {
-                    let active = current == *path;
+                { for items.iter().map(|(route, icon, label)| {
+                    let active = *route == current;
                     html! {
-                        <Link<Route> to={path.parse::<Route>().unwrap()} classes={classes!("sidebar-item", active.then_some("active"))}>
+                        <Link<Route> to={route.clone()} classes={classes!("sidebar-item", active.then_some("active"))}>
                             {format!("{} {}", icon, label)}
                         </Link<Route>>
                     }
