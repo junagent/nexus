@@ -33,13 +33,13 @@ pub struct ProviderInfo {
     pub active: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamChunk {
     pub chunk: String,
     pub session_id: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolEvent {
     pub session_id: String,
     pub tool_name: String,
