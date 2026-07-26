@@ -241,8 +241,9 @@ fn chat_screen() -> Html {
             let tool_events = tool_events.clone();
             let messages = messages.clone();
             let streaming = streaming.clone();
+            let msg_clone = msg.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                let encoded = web_sys::js_sys::encode_uri_component(&msg).as_string().unwrap_or_default();
+                let encoded = web_sys::js_sys::encode_uri_component(&msg_clone).as_string().unwrap_or_default();
                 let url = format!("http://localhost:18789/api/chat/stream?message={}&provider=github&model=gpt-4o-mini", encoded);
                 if let Ok(es_raw) = web_sys::EventSource::new(&url) {
                     let es = std::rc::Rc::new(es_raw);
@@ -627,8 +628,9 @@ fn mcp_screen() -> Html {
                         </div>
                         <button class="btn-sm" onclick={Callback::from(move |_| {
                             let servers = servers.clone();
+                            let s_name_clone = s_name.clone();
                             wasm_bindgen_futures::spawn_local(async move {
-                                let _ = tauri_invoke::<()>("remove_mcp_server", jsval(&serde_json::json!({"name": s_name.clone()}))).await;
+                                let _ = tauri_invoke::<()>("remove_mcp_server", jsval(&serde_json::json!({"name": s_name_clone.clone()}))).await;
                                 let s2: Vec<McpServerInfo> = tauri_invoke("list_mcp_servers", jsval(&serde_json::json!({}))).await.unwrap_or_default();
                                 servers.set(s2);
                             });
