@@ -51,8 +51,11 @@ pub struct EnvVar {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SkillInfo {
     pub name: String,
-    pub enabled: bool,
+    pub version: String,
     pub description: String,
+    pub author: String,
+    pub enabled: bool,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -522,15 +525,82 @@ fn skills_screen() -> Html {
         }
     });
 
+    let install_name = use_state(|| String::new());
+
+    let install = {
+        let skills = skills.clone();
+        let install_name = install_name.clone();
+        Callback::from(move |_: ()| {
+            let name = (*install_name).clone();
+            if name.trim().is_empty() { return; }
+            let skills = skills.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _: () = tauri_invoke("install_skill", jsval(&serde_json::json!({"name": name}))).await.unwrap_or_default();
+                let s: Vec<SkillInfo> = tauri_invoke("list_skills", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                skills.set(s);
+            });
+        })
+    };
+
+    let toggle = {
+        let skills = skills.clone();
+        Callback::from(move |name: String| {
+            let skills = skills.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                // Find current enabled state
+                let current: Vec<SkillInfo> = tauri_invoke("list_skills", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                let enabled = current.iter().find(|s| s.name == name).map(|s| !s.enabled).unwrap_or(true);
+                let _: () = tauri_invoke("toggle_skill", jsval(&serde_json::json!({"name": name, "enabled": enabled}))).await.unwrap_or_default();
+                let s: Vec<SkillInfo> = tauri_invoke("list_skills", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                skills.set(s);
+            });
+        })
+    };
+
+    let remove = {
+        let skills = skills.clone();
+        Callback::from(move |name: String| {
+            let skills = skills.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _: () = tauri_invoke("remove_skill", jsval(&serde_json::json!({"name": name}))).await.unwrap_or_default();
+                let s: Vec<SkillInfo> = tauri_invoke("list_skills", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                skills.set(s);
+            });
+        })
+    };
+
     html! {
         <div class="screen">
             <h2 class="screen-title">{ "Skills" }</h2>
+            <div class="config-section">
+                <input class="config-input" placeholder="Skill name to install" value={(*install_name).clone()} oninput={{
+                    let install_name = install_name.clone();
+                    Callback::from(move |e: InputEvent| {
+                        if let Some(el) = e.target_dyn_into::<web_sys::HtmlInputElement>() { install_name.set(el.value()); }
+                    })
+                }} />
+                <button class="btn-primary" onclick={install}>{ "Install" }</button>
+            </div>
             { for (*skills).iter().map(|s| {
+                let toggle = toggle.clone();
+                let remove = remove.clone();
+                let name = s.name.clone();
+                let name_remove = s.name.clone();
                 html! {
                     <div class="skill-card" key={s.name.clone()}>
-                        <strong>{ &s.name }</strong>
-                        <span class={if s.enabled { "status-tag connected" } else { "status-tag" }}>{ if s.enabled { "Enabled" } else { "Disabled" } }</span>
+                        <div class="skill-header">
+                            <strong>{ &s.name }</strong>
+                            <span class={if s.enabled { "status-tag connected" } else { "status-tag" }}>{ if s.enabled { "Enabled" } else { "Disabled" } }</span>
+                            <span class="text-muted">{ format!("v{}", &s.version) }</span>
+                        </div>
                         <p class="text-muted">{ &s.description }</p>
+                        { if !s.tags.is_empty() {
+                            html! { <div class="trace-tags">{ for s.tags.iter().map(|t| html! { <span class="tag">{ t.clone() }</span> }) }</div> }
+                        } else { html! {} } }
+                        <div class="skill-actions">
+                            <button class="btn-sm" onclick={Callback::from(move |_| toggle.emit(name.clone()))}>{ if s.enabled { "Disable" } else { "Enable" } }</button>
+                            <button class="btn-sm" onclick={Callback::from(move |_| remove.emit(name_remove.clone()))}>{ "Remove" }</button>
+                        </div>
                     </div>
                 }
             })}
