@@ -27,6 +27,14 @@ export async function setProvider(providerId: string, model: string): Promise<vo
   return invoke("set_provider", { providerId, model });
 }
 
+export interface EnvVar { key: string; value: string; masked: boolean; }
+export async function getEnv(): Promise<EnvVar[]> {
+  return invoke("get_env");
+}
+export async function setEnv(key: string, value: string): Promise<void> {
+  return invoke("set_env", { key, value });
+}
+
 // Skills
 export async function listSkills(): Promise<SkillInfo[]> {
   return invoke("list_skills");

@@ -147,6 +147,25 @@ pub async fn chat_stream(
     Ok(full_response)
 }
 
+/// Auto-detect a usable provider from whichever API key is set in the
+/// environment. Returns (provider_id, default_model). Priority order favors
+/// the most capable / most commonly-used providers first.
+pub fn auto_detect_provider() -> Option<(String, String)> {
+    let candidates = [
+        ("OPENROUTER_API_KEY", "openrouter", "anthropic/claude-sonnet-4"),
+        ("ANTHROPIC_API_KEY", "anthropic", "claude-sonnet-4"),
+        ("OPENAI_API_KEY", "openai", "gpt-4o"),
+        ("DEEPSEEK_API_KEY", "deepseek", "deepseek-chat"),
+        ("GOOGLE_API_KEY", "google", "gemini-2.0-flash"),
+    ];
+    for (env_key, provider, default_model) in candidates {
+        if std::env::var(env_key).map(|v| !v.trim().is_empty()).unwrap_or(false) {
+            return Some((provider.to_string(), default_model.to_string()));
+        }
+    }
+    None
+}
+
 /// Get the appropriate base URL and API key for a provider.
 pub fn get_provider_config(provider: &str) -> Result<(String, String)> {
     match provider {

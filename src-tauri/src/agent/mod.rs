@@ -374,7 +374,27 @@ impl NexusEngine {
         }).collect()
     }
 
-    pub async fn set_env_var(&mut self, key: &str, value: &str) { self.env_vars.insert(key.to_string(), value.to_string()); }
+    pub async fn set_env_var(&mut self, key: &str, value: &str) {
+        self.env_vars.insert(key.to_string(), value.to_string());
+        // Make it visible to the current process immediately so
+        // get_provider_config() (which reads std::env) picks it up.
+        std::env::set_var(key, value);
+        // Persist back to the .env file so it survives restarts.
+        self.persist_env_file();
+    }
+
+    /// Write all env vars back to %APPDATA%/nexus/.env
+    fn persist_env_file(&self) {
+        let env_path = dirs_next().join("nexus").join(".env");
+        if let Some(parent) = env_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let mut out = String::from("# Nexus LLM Provider Keys (managed by the app)\n");
+        for (k, v) in &self.env_vars {
+            out.push_str(&format!("{}={}\n", k, v));
+        }
+        let _ = std::fs::write(&env_path, out);
+    }
 
     pub async fn toggle_gateway(&mut self, id: &str, enable: bool) -> Result<(), anyhow::Error> {
         if let Some(g) = self.gateways.get_mut(id) { g.enabled = enable; }

@@ -95,13 +95,51 @@ pub async fn chat_stream(
         }
     }
 
+    // Resolve provider/model. Priority:
+    // 1) explicitly-set active provider/model
+    // 2) auto-detect from whichever API key is configured, using the
+    //    model the frontend sent (or a sane default for that provider)
     let (provider, model) = match (&engine.active_provider, &engine.active_model) {
         (Some(p), Some(m)) => (p.clone(), m.clone()),
-        _ => return Err("No provider configured".into()),
+        _ => {
+            match providers::auto_detect_provider() {
+                Some((p, default_model)) => {
+                    // Honor the frontend-selected model when it looks compatible,
+                    // otherwise use the provider's default.
+                    let req_model = request.model.clone().unwrap_or_default();
+                    let m = if req_model.is_empty() { default_model } else { req_model };
+                    // Remember the choice for subsequent turns.
+                    engine.active_provider = Some(p.clone());
+                    engine.active_model = Some(m.clone());
+                    (p, m)
+                }
+                None => {
+                    let msg = "⚠️ No API key configured. Open **Providers** and paste an API key (OpenRouter, OpenAI, Anthropic, DeepSeek, or Google), then click Save.";
+                    let _ = app_handle.emit("nexus://stream/chunk", StreamChunk {
+                        chunk: msg.to_string(), session_id: sid.clone(),
+                    });
+                    let _ = app_handle.emit("nexus://stream/done", serde_json::json!({
+                        "session_id": sid, "tool_calls": Vec::<ToolCallInfo>::new(),
+                    }));
+                    return Ok(msg.to_string());
+                }
+            }
+        }
     };
 
-    let (base_url, api_key) = providers::get_provider_config(&provider)
-        .map_err(|e| e.to_string())?;
+    let (base_url, api_key) = match providers::get_provider_config(&provider) {
+        Ok(v) => v,
+        Err(e) => {
+            let msg = format!("⚠️ {}. Open **Providers** to set your API key.", e);
+            let _ = app_handle.emit("nexus://stream/chunk", StreamChunk {
+                chunk: msg.clone(), session_id: sid.clone(),
+            });
+            let _ = app_handle.emit("nexus://stream/done", serde_json::json!({
+                "session_id": sid, "tool_calls": Vec::<ToolCallInfo>::new(),
+            }));
+            return Ok(msg);
+        }
+    };
 
     // Build messages
     let mut msgs = vec![providers::ChatMessage {

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { Message } from "../types";
-import { chatSend, listSessions } from "../api";
+import { chatSend, listSessions, getEnv } from "../api";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -17,12 +17,21 @@ export default function ChatScreen() {
   const [sessions, setSessions] = useState<{ id: string; title: string }[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
   const [estTokens, setEstTokens] = useState(0);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, streamingText, toolEvents]);
 
   // Load sessions
   useEffect(() => { listSessions().then(s => setSessions(s.map(x => ({ id: x.id, title: x.title })))); }, []);
+
+  // Check whether any provider key is configured
+  useEffect(() => {
+    getEnv().then(envs => {
+      const hasKey = envs.some(e => e.key.endsWith("_API_KEY") && e.value);
+      setNeedsSetup(!hasKey);
+    }).catch(() => {});
+  }, []);
 
   // Listen for Tauri streaming events
   useEffect(() => {
@@ -122,6 +131,11 @@ export default function ChatScreen() {
         )}
 
         <div className="messages">
+          {needsSetup && (
+            <div className="setup-banner">
+              ⚙️ No API key configured yet. Go to <strong>Providers</strong> in the sidebar, paste an API key, and click <strong>Save Key &amp; Activate</strong> to start chatting.
+            </div>
+          )}
           {messages.map((msg, i) => (
             <div key={i} className={`message message-${msg.role}`}>
               <div className="message-avatar">{msg.role === "user" ? "👤" : "◆"}</div>
