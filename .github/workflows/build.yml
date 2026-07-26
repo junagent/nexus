@@ -52,7 +52,7 @@ jobs:
             librsvg2-dev
 
       - name: Build WASM frontend
-        run: wasm-pack build frontend --target web --out-dir ../dist --out-name nexus
+        run: wasm-pack build frontend --target web --out-dir ../dist --out-name nexus --no-opt
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2"
