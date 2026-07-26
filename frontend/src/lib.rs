@@ -59,6 +59,15 @@ pub struct SkillInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GatewayInfo {
+    pub id: String,
+    pub name: String,
+    pub platform: String,
+    pub enabled: bool,
+    pub connected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct McpServerInfo {
     pub name: String,
     pub command: String,
@@ -850,10 +859,55 @@ fn bandit_screen() -> Html {
 
 #[function_component(GatewayScreen)]
 fn gateway_screen() -> Html {
+    let gateways = use_state(|| Vec::<GatewayInfo>::new());
+
+    {
+        let gateways = gateways.clone();
+        use_effect_with((), move |_| {
+            wasm_bindgen_futures::spawn_local(async move {
+                let g: Vec<GatewayInfo> = tauri_invoke("list_gateways", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                gateways.set(g);
+            });
+            || ()
+        });
+    }
+
+    let toggle = {
+        let gateways = gateways.clone();
+        Callback::from(move |(id, enable): (String, bool)| {
+            let gateways = gateways.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _: () = tauri_invoke("toggle_gateway", jsval(&serde_json::json!({"id": id, "enable": enable}))).await.unwrap_or_default();
+                let g: Vec<GatewayInfo> = tauri_invoke("list_gateways", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                gateways.set(g);
+            });
+        })
+    };
+
     html! {
         <div class="screen">
             <h2 class="screen-title">{ "Gateway" }</h2>
-            <p class="empty-state">{ "Gateways — coming soon." }</p>
+            <p class="text-muted">{ "Connect Nexus to external messaging platforms (Telegram, Discord, etc.)." }</p>
+            { for (*gateways).iter().map(|g| {
+                let toggle = toggle.clone();
+                let id = g.id.clone();
+                let will_enable = !g.enabled;
+                html! {
+                    <div class="mcp-server-card" key={g.id.clone()}>
+                        <div class="skill-header">
+                            <strong>{ &g.name }</strong>
+                            <span class={if g.connected { "status-tag connected" } else { "status-tag" }}>{ if g.connected { "Connected" } else { "Offline" } }</span>
+                            <span class="text-muted">{ &g.platform }</span>
+                        </div>
+                        <div class="skill-actions">
+                            <button class="btn-sm" onclick={Callback::from(move |_| toggle.emit((id.clone(), will_enable)))}>{ if g.enabled { "Disable" } else { "Enable" } }</button>
+                        </div>
+                    </div>
+                }
+            })}
+            if gateways.is_empty() {
+                <p class="empty-state">{ "No gateways configured." }</p>
+            }
         </div>
     }
 }
