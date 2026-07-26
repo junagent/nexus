@@ -241,7 +241,7 @@ fn chat_screen() -> Html {
         let streaming = streaming.clone();
         let streaming_text = streaming_text.clone();
         let tool_events = tool_events.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             let msg = (*input).clone();
             if msg.trim().is_empty() { return; }
             input.set(String::new());
@@ -397,7 +397,7 @@ fn providers_screen() -> Html {
         let model = model.clone();
         let api_key = api_key.clone();
         let status = status.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             if (*api_key).trim().is_empty() { status.set("❌ Enter an API key first".into()); return; }
             let pk = (*provider).clone();
             let md = (*model).clone();
@@ -539,7 +539,7 @@ fn skills_screen() -> Html {
     let install = {
         let skills = skills.clone();
         let install_name = install_name.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             let name = (*install_name).clone();
             if name.trim().is_empty() { return; }
             let skills = skills.clone();
@@ -631,7 +631,7 @@ fn mcp_screen() -> Html {
 
     let refresh = {
         let servers = servers.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             let servers = servers.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let s: Vec<McpServerInfo> = tauri_invoke("list_mcp_servers", jsval(&serde_json::json!({}))).await.unwrap_or_default();
@@ -656,7 +656,7 @@ fn mcp_screen() -> Html {
         let new_command = new_command.clone();
         let new_args = new_args.clone();
         let servers = servers.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             let name = (*new_name).clone();
             let cmd = (*new_command).clone();
             let args_str = (*new_args).clone();
@@ -710,7 +710,7 @@ fn mcp_screen() -> Html {
                         <div class="mcp-server-tools">
                             { for s.tools.iter().map(|t| html! { <span class="tool-tag">{ t }</span> }) }
                         </div>
-                        <button class="btn-sm" onclick={Callback::from(move |_| {
+                        <button class="btn-sm" onclick={Callback::from(move |_: MouseEvent| {
                             let servers = servers.clone();
                             let s_name_clone = s_name.clone();
                             wasm_bindgen_futures::spawn_local(async move {
@@ -748,7 +748,7 @@ fn trace_screen() -> Html {
 
     let clear = {
         let events = events.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             let events = events.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let _: () = tauri_invoke("trace_clear", jsval(&serde_json::json!({}))).await.unwrap_or_default();
@@ -807,7 +807,7 @@ fn bandit_screen() -> Html {
     let auto_select = {
         let arms = arms.clone();
         let selected = selected.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             let arms = arms.clone();
             let selected = selected.clone();
             wasm_bindgen_futures::spawn_local(async move {
