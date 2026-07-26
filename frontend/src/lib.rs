@@ -209,23 +209,6 @@ fn chat_screen() -> Html {
         });
     }
 
-    // Helper: append assistant message from streaming buffer
-    let finalize = {
-        let streaming_text = streaming_text.clone();
-        let messages = messages.clone();
-        let streaming = streaming.clone();
-        Callback::from(move |_| {
-            let text = (*streaming_text).clone();
-            if !text.is_empty() {
-                let mut msgs = (*messages).clone();
-                msgs.push(Message { role: "assistant".into(), content: text });
-                messages.set(msgs);
-            }
-            streaming_text.set(String::new());
-            streaming.set(false);
-        })
-    };
-
     let oninput = {
         let input = input.clone();
         Callback::from(move |e: InputEvent| {
@@ -253,16 +236,19 @@ fn chat_screen() -> Html {
             msgs.push(Message { role: "user".into(), content: msg.clone() });
             messages.set(msgs);
 
-            // Open SSE stream from agent server
+            // Open SSE stream from agent server (port 18789)
             let streaming_text = streaming_text.clone();
             let tool_events = tool_events.clone();
-            // Open SSE stream from agent server (port 18789)
+            let messages = messages.clone();
+            let streaming = streaming.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let encoded = web_sys::js_sys::encode_uri_component(&msg).as_string().unwrap_or_default();
                 let url = format!("http://localhost:18789/api/chat/stream?message={}&provider=github&model=gpt-4o-mini", encoded);
                 if let Ok(es) = web_sys::EventSource::new(&url) {
                     let st = streaming_text.clone();
                     let te = tool_events.clone();
+                    let msgs_state = messages.clone();
+                    let streaming_state = streaming.clone();
                     let on_msg = Closure::wrap(Box::new(move |e: web_sys::MessageEvent| {
                         if let Ok(data) = e.data().dyn_into::<js_sys::JsString>() {
                             let s: String = data.into();
@@ -284,7 +270,15 @@ fn chat_screen() -> Html {
                                                 te.set(evs);
                                             }
                                             "done" => {
-                                                finalize.emit(());
+                                                // Finalize streaming text into messages
+                                                let text = (*st).clone();
+                                                if !text.is_empty() {
+                                                    let mut ms = (*msgs_state).clone();
+                                                    ms.push(Message { role: "assistant".into(), content: text });
+                                                    msgs_state.set(ms);
+                                                }
+                                                st.set(String::new());
+                                                streaming_state.set(false);
                                                 es.close();
                                             }
                                             _ => {}
