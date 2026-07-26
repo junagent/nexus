@@ -547,7 +547,7 @@ fn mcp_screen() -> Html {
 
     let refresh = {
         let servers = servers.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: ()| {
             let servers = servers.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let s: Vec<McpServerInfo> = tauri_invoke("list_mcp_servers", jsval(&serde_json::json!({}))).await.unwrap_or_default();
