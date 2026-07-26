@@ -412,7 +412,7 @@ impl NexusEngine {
 
                 // Stream the main model response (non-tool path first)
                 match providers::chat_with_tools_stream(&base_url, &api_key, &model, &msgs, &tools, |chunk: &str| {
-                    let _ = tx.blocking_send(StreamEvent::Chunk(chunk.to_string()));
+                    let _ = tx.try_send(StreamEvent::Chunk(chunk.to_string()));
                 }).await {
                     Ok((final_text, calls)) => {
                         let mut executed = Vec::new();
