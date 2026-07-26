@@ -41,7 +41,7 @@ pub fn run() {
                 tracing::info!("Nexus agent server running on {}", addr);
             });
 
-            tracing::info!("Nexus agent engine initialized");
+            tracing::info!("Nexus agent engine initialized (Rust frontend)");
 
             Ok(())
         })

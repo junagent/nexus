@@ -1,31 +1,16 @@
-# Dependencies
-node_modules/
-
-# Build
-dist/
+# Rust
 target/
+Cargo.lock
 
-# Environment
-.env
-.env.local
+# WASM frontend
+dist/nexus.js
+dist/nexus_bg.wasm
+dist/nexus.d.ts
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Rust
-*.rs.bk
-Cargo.lock
-
-# Tauri
-src-tauri/gen/
-
-# Logs
-*.log
-*.7z
