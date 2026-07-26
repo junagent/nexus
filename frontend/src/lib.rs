@@ -77,11 +77,11 @@ pub struct TraceEvent {
 pub struct BanditArm {
     pub provider: String,
     pub model: String,
-    pub pulls: u32,
-    pub successes: u32,
-    pub failures: u32,
-    pub rate: f64,
-    pub cost: f64,
+    pub trials: u32,
+    pub success_rate: f64,
+    pub avg_latency_ms: f64,
+    pub avg_cost: f64,
+    pub ucb1_score: f64,
 }
 
 // ── Tauri IPC helper ─────────────────────────────────────────────────
@@ -685,38 +685,65 @@ fn trace_screen() -> Html {
 #[function_component(BanditScreen)]
 fn bandit_screen() -> Html {
     let arms = use_state(|| Vec::<BanditArm>::new());
+    let selected = use_state(|| String::new());
 
-    use_effect_with((), {
+    {
         let arms = arms.clone();
-        move |_| {
+        use_effect_with((), move |_| {
             wasm_bindgen_futures::spawn_local(async move {
                 let a: Vec<BanditArm> = tauri_invoke("bandit_stats", jsval(&serde_json::json!({}))).await.unwrap_or_default();
                 arms.set(a);
             });
             || ()
-        }
-    });
+        });
+    }
+
+    let auto_select = {
+        let arms = arms.clone();
+        let selected = selected.clone();
+        Callback::from(move |_: ()| {
+            let arms = arms.clone();
+            let selected = selected.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let r: serde_json::Value = tauri_invoke("bandit_select", jsval(&serde_json::json!({"preferred": null}))).await.unwrap_or(serde_json::json!({}));
+                if let (Some(p), Some(m)) = (r.get("provider").and_then(|x| x.as_str()), r.get("model").and_then(|x| x.as_str())) {
+                    selected.set(format!("{} / {}", p, m));
+                    // Refresh stats
+                    let a: Vec<BanditArm> = tauri_invoke("bandit_stats", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                    arms.set(a);
+                }
+            });
+        })
+    };
 
     html! {
         <div class="screen">
             <h2 class="screen-title">{ "Bandit" }</h2>
+            <p class="text-muted">{ "UCB1 multi-armed bandit auto-routes to the best (provider, model) arm by balancing exploration vs. exploitation." }</p>
+            <button class="btn-primary" onclick={auto_select}>{ "Auto-select Best Arm" }</button>
+            { if !(*selected).is_empty() {
+                html! { <div class="setup-banner">{ "Selected: " }<strong>{ (*selected).clone() }</strong></div> }
+            } else { html! {} }}
             <table class="bandit-table">
-                <thead><tr><th>{ "Provider" }</th><th>{ "Model" }</th><th>{ "Pulls" }</th><th>{ "Rate" }</th></tr></thead>
+                <thead><tr><th>{ "Provider" }</th><th>{ "Model" }</th><th>{ "Trials" }</th><th>{ "Success" }</th><th>{ "Avg Latency" }</th><th>{ "Avg Cost" }</th><th>{ "UCB1" }</th></tr></thead>
                 <tbody>
                     { for (*arms).iter().map(|a| {
                         html! {
                             <tr key={format!("{}-{}", a.provider, a.model)}>
                                 <td>{ &a.provider }</td>
                                 <td>{ &a.model }</td>
-                                <td>{ a.pulls }</td>
-                                <td>{ format!("{:.1}%", a.rate * 100.0) }</td>
+                                <td>{ a.trials }</td>
+                                <td>{ format!("{:.1}%", a.success_rate * 100.0) }</td>
+                                <td>{ format!("{:.0}ms", a.avg_latency_ms) }</td>
+                                <td>{ format!("${:.4}", a.avg_cost) }</td>
+                                <td>{ format!("{:.3}", a.ucb1_score) }</td>
                             </tr>
                         }
                     })}
                 </tbody>
             </table>
             if arms.is_empty() {
-                <p class="empty-state">{ "No bandit data yet." }</p>
+                <p class="empty-state">{ "No bandit data yet. Send a message to populate arms." }</p>
             }
         </div>
     }
