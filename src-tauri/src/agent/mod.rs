@@ -140,6 +140,8 @@ impl NexusEngine {
 
         // Register all provider arms in the bandit selector
         for (provider, models) in &[
+            ("github", &["gpt-4o-mini", "gpt-4o"] as &[&str]),
+            ("groq", &["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]),
             ("anthropic", &["claude-sonnet-4", "claude-3.5-haiku"] as &[&str]),
             ("openai", &["gpt-4o", "gpt-4o-mini", "o3-mini"]),
             ("deepseek", &["deepseek-chat", "deepseek-reasoner"]),
@@ -352,6 +354,8 @@ impl NexusEngine {
 
     pub fn list_providers(&self) -> Vec<ProviderInfo> {
         vec![
+            ProviderInfo { id: "github".into(), name: "GitHub Models (free)".into(), models: vec!["gpt-4o-mini".into(), "gpt-4o".into()], active: self.active_provider.as_deref() == Some("github") },
+            ProviderInfo { id: "groq".into(), name: "Groq (free)".into(), models: vec!["llama-3.3-70b-versatile".into(), "llama-3.1-8b-instant".into()], active: self.active_provider.as_deref() == Some("groq") },
             ProviderInfo { id: "anthropic".into(), name: "Anthropic Claude".into(), models: vec!["claude-sonnet-4".into(), "claude-3.5-haiku".into()], active: self.active_provider.as_deref() == Some("anthropic") },
             ProviderInfo { id: "openai".into(), name: "OpenAI".into(), models: vec!["gpt-4o".into(), "gpt-4o-mini".into(), "o3-mini".into()], active: self.active_provider.as_deref() == Some("openai") },
             ProviderInfo { id: "deepseek".into(), name: "DeepSeek".into(), models: vec!["deepseek-chat".into(), "deepseek-reasoner".into()], active: self.active_provider.as_deref() == Some("deepseek") },

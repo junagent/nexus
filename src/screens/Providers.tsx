@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { setProvider, getEnv, setEnv } from "../api";
 
 const PROVIDERS: Record<string, { name: string; envKey: string; models: string[] }> = {
+  github: { name: "GitHub Models (free)", envKey: "GITHUB_TOKEN", models: ["gpt-4o-mini", "gpt-4o"] },
+  groq: { name: "Groq (free)", envKey: "GROQ_API_KEY", models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"] },
   openrouter: { name: "OpenRouter (recommended)", envKey: "OPENROUTER_API_KEY", models: ["anthropic/claude-sonnet-4", "openai/gpt-4o", "google/gemini-2.0-flash", "deepseek/deepseek-chat"] },
   anthropic: { name: "Anthropic Claude", envKey: "ANTHROPIC_API_KEY", models: ["claude-sonnet-4", "claude-3.5-haiku"] },
   openai: { name: "OpenAI", envKey: "OPENAI_API_KEY", models: ["gpt-4o", "gpt-4o-mini", "o3-mini"] },
@@ -10,8 +12,8 @@ const PROVIDERS: Record<string, { name: string; envKey: string; models: string[]
 };
 
 export default function ProvidersScreen() {
-  const [provider, setProv] = useState("openrouter");
-  const [model, setModel] = useState("anthropic/claude-sonnet-4");
+  const [provider, setProv] = useState("github");
+  const [model, setModel] = useState("gpt-4o-mini");
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState("");
   const [configured, setConfigured] = useState<Record<string, string>>({});

@@ -152,6 +152,8 @@ pub async fn chat_stream(
 /// the most capable / most commonly-used providers first.
 pub fn auto_detect_provider() -> Option<(String, String)> {
     let candidates = [
+        ("GITHUB_TOKEN", "github", "gpt-4o-mini"),
+        ("GROQ_API_KEY", "groq", "llama-3.3-70b-versatile"),
         ("OPENROUTER_API_KEY", "openrouter", "anthropic/claude-sonnet-4"),
         ("ANTHROPIC_API_KEY", "anthropic", "claude-sonnet-4"),
         ("OPENAI_API_KEY", "openai", "gpt-4o"),
@@ -193,6 +195,17 @@ pub fn get_provider_config(provider: &str) -> Result<(String, String)> {
             let key = std::env::var("GOOGLE_API_KEY").unwrap_or_default();
             if key.is_empty() { return Err(anyhow!("GOOGLE_API_KEY not set")); }
             Ok(("https://generativelanguage.googleapis.com".into(), key))
+        }
+        "github" => {
+            // GitHub Models — free inference endpoint. Uses GITHUB_TOKEN.
+            let key = std::env::var("GITHUB_TOKEN").unwrap_or_default();
+            if key.is_empty() { return Err(anyhow!("GITHUB_TOKEN not set")); }
+            Ok(("https://models.github.ai/inference".into(), key))
+        }
+        "groq" => {
+            let key = std::env::var("GROQ_API_KEY").unwrap_or_default();
+            if key.is_empty() { return Err(anyhow!("GROQ_API_KEY not set")); }
+            Ok(("https://api.groq.com/openai/v1".into(), key))
         }
         _ => Err(anyhow!("Unknown provider: {}", provider)),
     }
