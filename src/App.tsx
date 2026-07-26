@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Screen, SystemInfo } from "./types";
-import { getSystemInfo } from "./api";
+import { getSystemInfo, agentServerStatus } from "./api";
 import Sidebar from "./components/Sidebar";
 import ChatScreen from "./screens/Chat";
 import SessionsScreen from "./screens/Sessions";
@@ -25,8 +25,7 @@ function App() {
     getSystemInfo().then(setSysInfo).catch(console.error);
     const i = setInterval(async () => {
       try {
-        const m = await import("./api");
-        const s = await m.agentServerStatus();
+        const s = await agentServerStatus();
         setServerRunning(s.running);
       } catch {}
     }, 5000);
