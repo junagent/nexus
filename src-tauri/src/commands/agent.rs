@@ -70,10 +70,21 @@ pub async fn chat_stream(
     let sid = request.session_id.clone()
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
+    // Create session if needed (must come before pushing the user message)
+    if !engine.sessions.contains_key(&sid) {
+        let now = chrono::Utc::now().to_rfc3339();
+        let session_model = engine.active_model.clone().unwrap_or_default();
+        engine.sessions.insert(sid.clone(), crate::commands::sessions::SessionInfo {
+            id: sid.clone(), title: "New Chat".into(),
+            message_count: 0, created_at: now.clone(), updated_at: now,
+            model: session_model,
+        });
+        engine.conversations.insert(sid.clone(), vec![]);
+    }
+
     // Add user message
     {
-        let msgs = engine.conversations.get_mut(&sid);
-        if let Some(msgs) = msgs {
+        if let Some(msgs) = engine.conversations.get_mut(&sid) {
             msgs.push(providers::ChatMessage { role: "user".into(), content: request.message.clone() });
         }
         if let Some(ref memory) = engine.memory {
@@ -82,16 +93,6 @@ pub async fn chat_stream(
         if let Some(s) = engine.sessions.get_mut(&sid) {
             s.message_count += 1;
         }
-    }
-    // Create session if needed
-    if !engine.sessions.contains_key(&sid) {
-        let now = chrono::Utc::now().to_rfc3339();
-        engine.sessions.insert(sid.clone(), crate::commands::sessions::SessionInfo {
-            id: sid.clone(), title: "New Chat".into(),
-            message_count: 0, created_at: now.clone(), updated_at: now,
-            model: engine.active_model.clone().unwrap_or_default(),
-        });
-        engine.conversations.insert(sid.clone(), vec![]);
     }
 
     let (provider, model) = match (&engine.active_provider, &engine.active_model) {
