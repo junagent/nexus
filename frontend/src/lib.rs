@@ -66,11 +66,16 @@ pub struct McpServerInfo {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TraceEvent {
-    pub id: String,
-    pub session_id: String,
-    pub event_type: String,
+    pub id: u64,
     pub timestamp: String,
+    pub event_type: String,
+    pub session_id: String,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub summary: String,
     pub detail: String,
+    pub duration_ms: f64,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -662,19 +667,41 @@ fn trace_screen() -> Html {
         }
     });
 
+    let clear = {
+        let events = events.clone();
+        Callback::from(move |_: ()| {
+            let events = events.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _: () = tauri_invoke("trace_clear", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                events.set(Vec::new());
+            });
+        })
+    };
+
     html! {
         <div class="screen">
             <h2 class="screen-title">{ "Trace" }</h2>
+            <p class="text-muted">{ "Full request/response/tool-call lifecycle tracing." }</p>
+            <button class="btn-sm" onclick={clear}>{ "Clear" }</button>
             { for (*events).iter().map(|e| {
                 html! {
-                    <div class="trace-event" key={e.id.clone()}>
-                        <span class="trace-type">{ &e.event_type }</span>
-                        <span class="text-muted">{ &e.detail }</span>
+                    <div class="trace-event" key={e.id}>
+                        <div class="trace-header">
+                            <span class="trace-type">{ &e.event_type }</span>
+                            { if let Some(p) = &e.provider { html! { <span class="trace-provider">{ p.clone() }</span> } } else { html! {} } }
+                            { if let Some(m) = &e.model { html! { <span class="trace-model">{ m.clone() }</span> } } else { html! {} } }
+                            <span class="trace-duration">{ format!("{:.0}ms", e.duration_ms) }</span>
+                        </div>
+                        <div class="trace-summary">{ &e.summary }</div>
+                        <div class="text-muted">{ &e.detail }</div>
+                        { if !e.tags.is_empty() {
+                            html! { <div class="trace-tags">{ for e.tags.iter().map(|t| html! { <span class="tag">{ t.clone() }</span> }) }</div> }
+                        } else { html! {} } }
                     </div>
                 }
             })}
             if events.is_empty() {
-                <p class="empty-state">{ "No trace events." }</p>
+                <p class="empty-state">{ "No trace events. Send a message to populate." }</p>
             }
         </div>
     }
