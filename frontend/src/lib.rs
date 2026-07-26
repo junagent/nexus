@@ -244,11 +244,13 @@ fn chat_screen() -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 let encoded = web_sys::js_sys::encode_uri_component(&msg).as_string().unwrap_or_default();
                 let url = format!("http://localhost:18789/api/chat/stream?message={}&provider=github&model=gpt-4o-mini", encoded);
-                if let Ok(es) = web_sys::EventSource::new(&url) {
+                if let Ok(es_raw) = web_sys::EventSource::new(&url) {
+                    let es = std::rc::Rc::new(es_raw);
                     let st = streaming_text.clone();
                     let te = tool_events.clone();
                     let msgs_state = messages.clone();
                     let streaming_state = streaming.clone();
+                    let es_for_handler = es.clone();
                     let on_msg = Closure::wrap(Box::new(move |e: web_sys::MessageEvent| {
                         if let Ok(data) = e.data().dyn_into::<js_sys::JsString>() {
                             let s: String = data.into();
@@ -270,7 +272,6 @@ fn chat_screen() -> Html {
                                                 te.set(evs);
                                             }
                                             "done" => {
-                                                // Finalize streaming text into messages
                                                 let text = (*st).clone();
                                                 if !text.is_empty() {
                                                     let mut ms = (*msgs_state).clone();
@@ -279,7 +280,7 @@ fn chat_screen() -> Html {
                                                 }
                                                 st.set(String::new());
                                                 streaming_state.set(false);
-                                                es.close();
+                                                es_for_handler.close();
                                             }
                                             _ => {}
                                         }
