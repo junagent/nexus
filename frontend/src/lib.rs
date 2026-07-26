@@ -137,7 +137,7 @@ pub enum Route {
     #[at("/settings")]
     Settings,
     #[at("/")]
-    #[redirect("/chat")]
+    #[not_found]
     Root,
 }
 
@@ -146,7 +146,7 @@ pub enum Route {
 #[function_component(Sidebar)]
 fn sidebar() -> Html {
     let route = use_route::<Route>();
-    let current = route.clone();
+    let current = route.unwrap_or(Route::Root);
     let items = [
         (Route::Chat, "💬", "Chat"),
         (Route::Sessions, "📋", "Sessions"),
@@ -652,7 +652,7 @@ fn switch(routes: Route) -> Html {
         Route::Bandit => html! { <BanditScreen /> },
         Route::Approvals => html! { <ApprovalsScreen /> },
         Route::Settings => html! { <SettingsScreen /> },
-        _ => html! { <ChatScreen /> },
+        Route::Root => html! { <ChatScreen /> },
     }
 }
 
