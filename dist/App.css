@@ -29,17 +29,12 @@ body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--tex
 .main-content::-webkit-scrollbar { width: 6px; }
 .main-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-/* Sidebar */
+/* Sidebar brand */
 .sidebar { width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
-.sidebar-header { padding: 20px 16px; border-bottom: 1px solid var(--border); text-align: center; }
-.brand-wordmark { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 28px; letter-spacing: 2px; display: flex; align-items: center; justify-content: center; gap: 0; height: 40px; }
-.letter-n, .letter-e, .letter-u, .letter-s { color: #e0e8ff; }
-.letter-x-core { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 40px; color: transparent; }
-.x-tri-left { position: absolute; width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 18px solid var(--cyan); opacity: 0.8; transform: rotate(-45deg); top: 8px; left: 7px; }
-.x-tri-right { position: absolute; width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 18px solid var(--pink); opacity: 0.8; transform: rotate(45deg); top: 8px; right: 7px; }
-.x-dot { position: absolute; width: 6px; height: 6px; background: #fff; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 2; box-shadow: 0 0 10px var(--cyan), 0 0 20px var(--cyan); animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse { 0%,100% { box-shadow: 0 0 10px var(--cyan); } 50% { box-shadow: 0 0 20px var(--cyan), 0 0 40px var(--cyan); } }
-.brand-slogan { font-family: 'JetBrains Mono', monospace; font-size: 8px; letter-spacing: 3px; color: var(--text3); text-transform: uppercase; margin-top: 4px; }
+.sidebar-logo { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0 10px; }
+.nexus-mark { display: block; filter: drop-shadow(0 0 8px rgba(0,212,255,0.55)); }
+.nexus-word { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px; letter-spacing: 6px; color: #eaf2ff; text-shadow: 0 0 12px rgba(0,212,255,0.35); padding-left: 6px; }
+.sidebar-slogan { text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 7.5px; letter-spacing: 3px; color: var(--text3); text-transform: uppercase; margin-bottom: 10px; }
 
 .sidebar-nav { padding: 12px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .nav-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: transparent; border: none; color: var(--text2); font-size: 13px; border-radius: 8px; cursor: pointer; transition: all 0.2s; }

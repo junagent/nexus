@@ -181,7 +181,29 @@ fn sidebar() -> Html {
 
     html! {
         <div class="sidebar">
-            <div class="sidebar-logo">{ "NEXUS" }</div>
+            <div class="sidebar-logo">
+                <svg class="nexus-mark" viewBox="0 0 64 40" width="64" height="40" aria-label="Nexus">
+                    <defs>
+                        <linearGradient id="nx-cyan" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#00d4ff"/>
+                            <stop offset="100%" stop-color="#0090ff"/>
+                        </linearGradient>
+                        <linearGradient id="nx-pink" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#ff00e4"/>
+                            <stop offset="100%" stop-color="#b400ff"/>
+                        </linearGradient>
+                        <filter id="nx-glow" x="-60%" y="-60%" width="220%" height="220%">
+                            <feGaussianBlur stdDeviation="2.2" result="b"/>
+                            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                    </defs>
+                    <polygon points="14,6 26,6 34,34 22,34" fill="url(#nx-cyan)" opacity="0.92" transform="rotate(-18 20 20)" filter="url(#nx-glow)"/>
+                    <polygon points="50,6 38,6 30,34 42,34" fill="url(#nx-pink)" opacity="0.92" transform="rotate(18 44 20)" filter="url(#nx-glow)"/>
+                    <circle cx="32" cy="20" r="4.2" fill="#ffffff" filter="url(#nx-glow)"/>
+                </svg>
+                <span class="nexus-word">{"NEXUS"}</span>
+            </div>
+            <div class="sidebar-slogan">{ "THE CORE OF YOUR AGI" }</div>
             <div class="sidebar-nav">
                 { for items.iter().map(|(route, icon, label)| {
                     let active = *route == current;
