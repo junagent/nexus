@@ -106,6 +106,26 @@ pub struct BanditArm {
     pub ucb1_score: f64,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApprovalRequestView {
+    pub id: String,
+    pub timestamp: String,
+    pub tool_name: String,
+    pub arguments: String,
+    pub risk_level: String,
+    pub reason: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NexusConfig {
+    pub theme: String,
+    pub font_size: u32,
+    pub language: String,
+    pub auto_start: bool,
+    pub data_dir: String,
+}
+
 // ── Tauri IPC helper ─────────────────────────────────────────────────
 
 #[wasm_bindgen]
@@ -515,25 +535,59 @@ fn providers_screen() -> Html {
 #[function_component(SessionsScreen)]
 fn sessions_screen() -> Html {
     let sessions = use_state(|| Vec::<SessionInfo>::new());
-    use_effect_with((), {
+
+    let fetch = {
         let sessions = sessions.clone();
-        move |_| {
+        Callback::from(move |_: MouseEvent| {
+            let sessions = sessions.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let s: Vec<SessionInfo> = tauri_invoke("list_sessions", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                sessions.set(s);
+            });
+        })
+    };
+
+    let delete = {
+        let sessions = sessions.clone();
+        Callback::from(move |id: String| {
+            let sessions = sessions.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _: () = tauri_invoke("delete_session", jsval(&serde_json::json!({"id": id}))).await.unwrap_or_default();
+                let s: Vec<SessionInfo> = tauri_invoke("list_sessions", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                sessions.set(s);
+            });
+        })
+    };
+
+    {
+        let sessions = sessions.clone();
+        use_effect_with((), move |_| {
             wasm_bindgen_futures::spawn_local(async move {
                 let s: Vec<SessionInfo> = tauri_invoke("list_sessions", jsval(&serde_json::json!({}))).await.unwrap_or_default();
                 sessions.set(s);
             });
             || ()
-        }
-    });
+        });
+    }
 
     html! {
         <div class="screen">
-            <h2 class="screen-title">{ "Sessions" }</h2>
+            <div class="screen-header">
+                <h2 class="screen-title">{ "Sessions" }</h2>
+                <button class="btn-secondary" onclick={fetch}>{ "Refresh" }</button>
+            </div>
             { for (*sessions).iter().map(|s| {
+                let delete = delete.clone();
+                let sid = s.id.clone();
                 html! {
                     <div class="session-card" key={s.id.clone()}>
-                        <strong>{ &s.title }</strong>
-                        <span class="text-muted">{ format!("{} messages · {}", s.message_count, &s.model) }</span>
+                        <div>
+                            <strong>{ &s.title }</strong>
+                            <span class="text-muted">{ format!(" · {} messages · {}", s.message_count, &s.model) }</span>
+                            <br/>
+                            <span class="text-muted" style="font-size:10px;">{ format!("created: {}", &s.created_at[..std::cmp::min(19,s.created_at.len())]) }</span>
+                        </div>
+                        <button class="btn-sm" onclick={Callback::from(move |_| delete.emit(sid.clone()))} style="color:#ff4466;">{ "Delete" }</button>
                     </div>
                 }
             })}
@@ -965,26 +1019,162 @@ fn memory_screen() -> Html {
 
 // ── Screen: Approvals ─────────────────────────────────────────────────
 
+// ── Screen: Approvals ─────────────────────────────────────────────────
+
 #[function_component(ApprovalsScreen)]
 fn approvals_screen() -> Html {
+    let requests = use_state(|| Vec::<ApprovalRequestView>::new());
+
+    let fetch = {
+        let requests = requests.clone();
+        Callback::from(move |_: MouseEvent| {
+            let requests = requests.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let r: Vec<ApprovalRequestView> = tauri_invoke("approval_pending", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                requests.set(r);
+            });
+        })
+    };
+
+    {
+        let requests = requests.clone();
+        use_effect_with((), move |_| {
+            wasm_bindgen_futures::spawn_local(async move {
+                let r: Vec<ApprovalRequestView> = tauri_invoke("approval_pending", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                requests.set(r);
+            });
+            || ()
+        });
+    }
+
+    let respond = {
+        let requests = requests.clone();
+        Callback::from(move |(id, approved): (String, bool)| {
+            let requests = requests.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _: () = tauri_invoke("approval_respond", jsval(&serde_json::json!({"id": id, "approved": approved}))).await.unwrap_or_default();
+                let r: Vec<ApprovalRequestView> = tauri_invoke("approval_pending", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                requests.set(r);
+            });
+        })
+    };
+
     html! {
         <div class="screen">
-            <h2 class="screen-title">{ "Approvals" }</h2>
-            <p class="empty-state">{ "No pending approvals." }</p>
+            <div class="screen-header">
+                <h2 class="screen-title">{ "Approvals" }</h2>
+                <button class="btn-secondary" onclick={fetch}>{ "Refresh" }</button>
+            </div>
+            { for (*requests).iter().map(|r| {
+                let respond = respond.clone();
+                let id_approve = r.id.clone();
+                let id_reject = r.id.clone();
+                html! {
+                    <div class="card" key={r.id.clone()}>
+                        <div class="card-header">
+                            <strong class="tool-event-name">{ &r.tool_name }</strong>
+                            <span class={if r.risk_level.contains("High") { "status-tag connected" } else { "status-tag" }}>{ &r.risk_level }</span>
+                        </div>
+                        <div class="card-desc"><code>{ &r.arguments }</code></div>
+                        <p class="text-muted">{ &r.reason }</p>
+                        <div class="card-actions">
+                            <button class="btn-sm" onclick={Callback::from(move |_| respond.emit((id_approve.clone(), true)))} style="background:#00ff88;color:#000;">{ "Approve" }</button>
+                            <button class="btn-sm" onclick={Callback::from(move |_| respond.emit((id_reject.clone(), false)))} style="background:#ff4466;">{ "Reject" }</button>
+                        </div>
+                    </div>
+                }
+            })}
+            if requests.is_empty() {
+                <p class="empty-state">{ "No pending approvals." }</p>
+            }
         </div>
     }
 }
 
 // ── Screen: Settings ──────────────────────────────────────────────────
 
+// ── Screen: Settings ──────────────────────────────────────────────────
+
 #[function_component(SettingsScreen)]
 fn settings_screen() -> Html {
+    let sys = use_state(|| serde_json::json!({ "version": "", "platform": "", "cpu_cores": 0, "memory_mb": 0, "uptime_secs": 0, "agent_active": false, "active_provider": "", "active_model": "" }));
+    let cfg = use_state(|| NexusConfig { theme: "dark".into(), font_size: 14, language: "en".into(), auto_start: false, data_dir: String::new() });
+
+    {
+        let sys = sys.clone();
+        let cfg = cfg.clone();
+        use_effect_with((), move |_| {
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Ok(s) = tauri_invoke::<serde_json::Value>("get_system_info", jsval(&serde_json::json!({}))).await { sys.set(s); }
+                if let Ok(c) = tauri_invoke::<NexusConfig>("get_config", jsval(&serde_json::json!({}))).await { cfg.set(c); }
+            });
+            || ()
+        });
+    }
+
+    let save = {
+        let cfg = cfg.clone();
+        Callback::from(move |_: MouseEvent| {
+            let c = (*cfg).clone();
+            let cfg = cfg.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _: () = tauri_invoke("update_config", jsval(&serde_json::json!(c))).await.unwrap_or_default();
+                if let Ok(c2) = tauri_invoke::<NexusConfig>("get_config", jsval(&serde_json::json!({}))).await { cfg.set(c2); }
+            });
+        })
+    };
+
     html! {
         <div class="screen">
             <h2 class="screen-title">{ "Settings" }</h2>
-            <div class="config-info">
-                { "Nexus v0.1.0 — The Core of Your AGI." }
+
+            <div class="config-stats">
+                <h3 class="config-label">{ "System" }</h3>
+                <div class="stat-row"><span class="stat-key">{ "Version" }</span><span class="stat-val">{ sys["version"].as_str().unwrap_or("") }</span></div>
+                <div class="stat-row"><span class="stat-key">{ "Platform" }</span><span class="stat-val">{ sys["platform"].as_str().unwrap_or("") }</span></div>
+                <div class="stat-row"><span class="stat-key">{ "Provider" }</span><span class="stat-val">{ sys["active_provider"].as_str().unwrap_or("") }</span></div>
+                <div class="stat-row"><span class="stat-key">{ "Model" }</span><span class="stat-val">{ sys["active_model"].as_str().unwrap_or("") }</span></div>
+                <div class="stat-row"><span class="stat-key">{ "Uptime" }</span><span class="stat-val">{ format!("{} s", sys["uptime_secs"].as_u64().unwrap_or(0)) }</span></div>
             </div>
+
+            <h3 class="config-label" style="margin-top:20px;">{ "App Config" }</h3>
+            <div class="config-section">
+                <label class="config-label">{ "Theme" }</label>
+                <select class="config-select" onchange={{
+                    let cfg = cfg.clone();
+                    Callback::from(move |e: Event| {
+                        let mut c = (*cfg).clone();
+                        c.theme = e.target_unchecked_into::<web_sys::HtmlSelectElement>().value();
+                        cfg.set(c);
+                    })
+                }}>
+                    <option value="dark" selected={cfg.theme=="dark"}>{ "Dark" }</option>
+                    <option value="light" selected={cfg.theme=="light"}>{ "Light" }</option>
+                </select>
+            </div>
+            <div class="config-section">
+                <label class="config-label">{ "Font Size" }</label>
+                <input class="config-input" type="number" value={(*cfg).font_size.to_string()} oninput={{
+                    let cfg = cfg.clone();
+                    Callback::from(move |e: InputEvent| {
+                        if let Some(el) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                            if let Ok(v) = el.value().parse::<u32>() { let mut c = (*cfg).clone(); c.font_size = v; cfg.set(c); }
+                        }
+                    })
+                }} />
+            </div>
+            <div class="config-section">
+                <label class="config-label">{ "Auto-start" }</label>
+                <input type="checkbox" checked={cfg.auto_start} onchange={{
+                    let cfg = cfg.clone();
+                    Callback::from(move |e: Event| {
+                        let mut c = (*cfg).clone();
+                        c.auto_start = e.target_unchecked_into::<web_sys::HtmlInputElement>().checked();
+                        cfg.set(c);
+                    })
+                }} />
+            </div>
+            <button class="btn-primary" onclick={save}>{ "Save Config" }</button>
         </div>
     }
 }
