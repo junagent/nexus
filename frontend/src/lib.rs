@@ -11,10 +11,15 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SystemInfo {
+    #[serde(rename = "uptime_secs")]
+    pub uptime_seconds: u64,
+    pub platform: String,
+    pub cpu_cores: u32,
+    pub memory_mb: u64,
     pub version: String,
+    pub agent_active: bool,
     pub active_provider: String,
     pub active_model: String,
-    pub uptime_seconds: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
