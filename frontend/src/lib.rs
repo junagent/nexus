@@ -1066,7 +1066,8 @@ fn approvals_screen() -> Html {
                 <button class="btn-secondary" onclick={fetch}>{ "Refresh" }</button>
             </div>
             { for (*requests).iter().map(|r| {
-                let respond = respond.clone();
+                let respond_approve = respond.clone();
+                let respond_reject = respond.clone();
                 let id_approve = r.id.clone();
                 let id_reject = r.id.clone();
                 html! {
@@ -1078,8 +1079,8 @@ fn approvals_screen() -> Html {
                         <div class="card-desc"><code>{ &r.arguments }</code></div>
                         <p class="text-muted">{ &r.reason }</p>
                         <div class="card-actions">
-                            <button class="btn-sm" onclick={Callback::from(move |_| respond.emit((id_approve.clone(), true)))} style="background:#00ff88;color:#000;">{ "Approve" }</button>
-                            <button class="btn-sm" onclick={Callback::from(move |_| respond.emit((id_reject.clone(), false)))} style="background:#ff4466;">{ "Reject" }</button>
+                            <button class="btn-sm" onclick={Callback::from(move |_: MouseEvent| respond_approve.emit((id_approve.clone(), true)))} style="background:#00ff88;color:#000;">{ "Approve" }</button>
+                            <button class="btn-sm" onclick={Callback::from(move |_: MouseEvent| respond_reject.emit((id_reject.clone(), false)))} style="background:#ff4466;">{ "Reject" }</button>
                         </div>
                     </div>
                 }
