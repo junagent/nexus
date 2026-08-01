@@ -110,9 +110,9 @@ cargo tauri build
 ### Build Output
 
 ```
-Windows:  src-tauri/target/release/bundle/msi/Nexus_*.msi
-macOS:    src-tauri/target/release/bundle/dmg/Nexus_*.dmg
-Linux:    src-tauri/target/release/bundle/deb/nexus_*.deb
+Windows:  target/x86_64-pc-windows-msvc/release/bundle/msi/Nexus_*.msi
+macOS:    target/aarch64-apple-darwin/release/bundle/dmg/Nexus_*.dmg
+Linux:    target/x86_64-unknown-linux-gnu/release/bundle/deb/nexus_*.deb
 ```
 
 ### CI/CD
