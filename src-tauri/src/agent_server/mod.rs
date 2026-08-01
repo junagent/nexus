@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::convert::Infallible;
 use axum::{
     Router, Json, extract::State, routing::{get, post},
-    response::{IntoResponse, sse::{Sse, Event, KeepAlive}},
+    response::sse::{Sse, Event, KeepAlive},
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;

@@ -69,11 +69,11 @@ impl SkillStore {
                 }
                 match std::fs::read_to_string(&path) {
                     Ok(contents) => {
-                        let skill: Option<SkillDef> = (if path.extension().map_or(false, |e| e == "json") {
+                        let skill: Option<SkillDef> = if path.extension().map_or(false, |e| e == "json") {
                             serde_json::from_str::<SkillDef>(&contents).ok()
                         } else {
                             serde_yaml::from_str::<SkillDef>(&contents).ok()
-                        });
+                        };
 
                         if skill.is_none() {
                             tracing::warn!("Failed to parse skill {}", path.display());
@@ -139,6 +139,7 @@ impl SkillStore {
                 .unwrap_or(source)
                 .trim_end_matches(".git")
                 .to_string();
+            let _ = name; // Reserved for future use (per-skill metadata)
 
             let clone_dir = self.skills_dir.join("_tmp");
             let _ = std::fs::remove_dir_all(&clone_dir);

@@ -13,7 +13,7 @@ pub struct ServerInfo {
 
 #[tauri::command]
 pub async fn agent_server_status(
-    engine: State<'_, Mutex<NexusEngine>>,
+    _engine: State<'_, Mutex<NexusEngine>>,
 ) -> Result<ServerInfo, String> {
     // Check if the server is running by hitting the health endpoint
     let port = 18789u16;
