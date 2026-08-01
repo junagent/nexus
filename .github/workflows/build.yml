@@ -8,18 +8,51 @@ on:
     branches: [main]
 
 jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-unknown-linux-gnu,wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: Run cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run cargo test
+        run: cargo test --all
+
+      - name: Build WASM frontend (dev)
+        run: wasm-pack build frontend --target web --out-dir ../dist --out-name nexus --dev
+
   build:
+    name: Build ${{ matrix.platform }}
+    needs: lint-and-test
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - platform: Windows
+            os: windows-latest
             target: x86_64-pc-windows-msvc
             ext: msi
-          - os: ubuntu-latest
+          - platform: Linux
+            os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             ext: deb
-          - os: macos-latest
+          - platform: macOS
+            os: macos-latest
             target: aarch64-apple-darwin
             ext: dmg
 
@@ -66,6 +99,6 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: nexus-${{ matrix.os }}-${{ matrix.target }}
+          name: nexus-${{ matrix.platform }}-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/bundle/${{ matrix.ext }}/*
           if-no-files-found: warn
