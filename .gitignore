@@ -13,4 +13,5 @@ dist/nexus.d.ts
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbs.db*.msi
+*.zip
