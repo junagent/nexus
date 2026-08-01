@@ -205,7 +205,7 @@ pub fn get_provider_config(provider: &str) -> Result<(String, String)> {
         "groq" => {
             let key = std::env::var("GROQ_API_KEY").unwrap_or_default();
             if key.is_empty() { return Err(anyhow!("GROQ_API_KEY not set")); }
-            Ok(("https://api.groq.com/openai/v1".into(), key))
+            Ok(("https://api.groq.com/openai".into(), key))
         }
         _ => Err(anyhow!("Unknown provider: {}", provider)),
     }
