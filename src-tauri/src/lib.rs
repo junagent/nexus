@@ -79,6 +79,9 @@ pub fn run() {
             commands::approval::approval_respond,
             commands::approval::approval_check,
             commands::agent_server::agent_server_status,
+            commands::memory::memory_list,
+            commands::memory::memory_get,
+            commands::memory::memory_clear,
         ])
         .run(tauri::generate_context!())
         .expect("error when running Nexus");

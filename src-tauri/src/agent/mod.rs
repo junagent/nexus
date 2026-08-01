@@ -23,6 +23,24 @@ pub enum StreamEvent {
     Done { response: String },
 }
 
+
+/// Lightweight memory entry returned by MemoryStore queries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryEntry {
+    pub role: String,
+    pub content: String,
+    pub timestamp: String,
+}
+
+/// Session summary for memory listing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemorySession {
+    pub session_id: String,
+    pub message_count: u32,
+    pub first_ts: String,
+    pub last_ts: String,
+}
+
 /// Simple SQLite-backed memory store.
 pub struct MemoryStore {
     db: std::sync::Mutex<rusqlite::Connection>,
@@ -77,6 +95,53 @@ impl MemoryStore {
             .collect();
         msgs.reverse();
         msgs
+    }
+
+    pub fn list_sessions(&self) -> Result<Vec<MemorySession>, String> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        let mut stmt = db.prepare(
+            "SELECT session_id, COUNT(*) AS cnt, MIN(timestamp) AS first_ts, MAX(timestamp) AS last_ts              FROM messages GROUP BY session_id ORDER BY last_ts DESC"
+        ).map_err(|e| e.to_string())?;
+        let rows: Vec<MemorySession> = stmt
+            .query_map([], |row| {
+                Ok(MemorySession {
+                    session_id: row.get(0)?,
+                    message_count: row.get::<_, i64>(1)? as u32,
+                    first_ts: row.get(2)?,
+                    last_ts: row.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(rows)
+    }
+
+    pub fn get_messages(&self, session_id: &str, limit: usize) -> Result<Vec<MemoryEntry>, String> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        let mut stmt = db.prepare(
+            "SELECT role, content, timestamp FROM messages WHERE session_id = ?1 ORDER BY id DESC LIMIT ?2"
+        ).map_err(|e| e.to_string())?;
+        let mut msgs: Vec<MemoryEntry> = stmt
+            .query_map(rusqlite::params![session_id, limit as i64], |row| {
+                Ok(MemoryEntry {
+                    role: row.get(0)?,
+                    content: row.get(1)?,
+                    timestamp: row.get(2)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        msgs.reverse();
+        Ok(msgs)
+    }
+
+    pub fn delete_session(&self, session_id: &str) -> Result<(), String> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        db.execute("DELETE FROM messages WHERE session_id = ?1", rusqlite::params![session_id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
 

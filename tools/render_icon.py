@@ -47,9 +47,10 @@ def render(size):
                          outline=hexa(CYAN, 70), width=max(1, size // 128))
 
     # Build each triangle layer at high res, rotate, downscale-composite
-    work = size * 2
+    # Use minimum work size to ensure visibility at tiny resolutions
+    work = max(size * 8, 256)
     left = tri_layer(work, CYAN, (0, 144, 255)).rotate(-18, resample=Image.BICUBIC, center=(work/2, work*0.30))
-    right = tri_layer(work, PINK, (180, 0, 255)).rotate(18, resample=Image.BICUBIC, center=(work/2, work*0.30))
+    right = tri_layer(work, PINK, (230, 0, 240)).rotate(18, resample=Image.BICUBIC, center=(work/2, work*0.30))
     # crop the working region back to size (rotation may push outside) -> use full then resize
     left = left.resize((size, size), Image.LANCZOS)
     right = right.resize((size, size), Image.LANCZOS)

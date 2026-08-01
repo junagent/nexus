@@ -107,6 +107,23 @@ pub struct BanditArm {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MemoryEntry {
+    pub role: String,
+    pub content: String,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MemorySession {
+    pub session_id: String,
+    pub message_count: u32,
+    pub first_ts: String,
+    pub last_ts: String,
+}
+
+// ── Tauri IPC helper ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApprovalRequestView {
     pub id: String,
     pub timestamp: String,
@@ -1009,10 +1026,111 @@ fn schedules_screen() -> Html {
 
 #[function_component(MemoryScreen)]
 fn memory_screen() -> Html {
+    let sessions = use_state(|| Vec::<MemorySession>::new());
+    let selected = use_state(|| String::new());
+    let messages = use_state(|| Vec::<MemoryEntry>::new());
+
+    let load = {
+        let sessions = sessions.clone();
+        Callback::from(move |_: MouseEvent| {
+            let sessions = sessions.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let s: Vec<MemorySession> = tauri_invoke("memory_list", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                sessions.set(s);
+            });
+        })
+    };
+
+    {
+        let sessions = sessions.clone();
+        use_effect_with((), move |_| {
+            wasm_bindgen_futures::spawn_local(async move {
+                let s: Vec<MemorySession> = tauri_invoke("memory_list", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                sessions.set(s);
+            });
+            || ()
+        });
+    }
+
+    let view = {
+        let messages = messages.clone();
+        let selected = selected.clone();
+        Callback::from(move |sid: String| {
+            let messages = messages.clone();
+            let selected = selected.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                selected.set(sid.clone());
+                let m: Vec<MemoryEntry> = tauri_invoke("memory_get", jsval(&serde_json::json!({"sessionId": sid, "limit": 100}))).await.unwrap_or_default();
+                messages.set(m);
+            });
+        })
+    };
+
+    let clear = {
+        let sessions = sessions.clone();
+        let messages = messages.clone();
+        let selected = selected.clone();
+        Callback::from(move |sid: String| {
+            let sessions = sessions.clone();
+            let messages = messages.clone();
+            let selected = selected.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _: () = tauri_invoke("memory_clear", jsval(&serde_json::json!({"sessionId": sid}))).await.unwrap_or_default();
+                let s: Vec<MemorySession> = tauri_invoke("memory_list", jsval(&serde_json::json!({}))).await.unwrap_or_default();
+                sessions.set(s);
+                messages.set(vec![]);
+                selected.set(String::new());
+            });
+        })
+    };
+
     html! {
         <div class="screen">
-            <h2 class="screen-title">{ "Memory" }</h2>
-            <p class="empty-state">{ "Memory — coming soon." }</p>
+            <div class="screen-header">
+                <h2 class="screen-title">{ "Memory" }</h2>
+                <button class="btn-secondary" onclick={load}>{ "Refresh" }</button>
+            </div>
+            <p class="text-muted">{ "Persistent chat memory stored in SQLite at %APPDATA%/nexus/memory.db." }</p>
+            <div class="config-section" style="display:flex; gap:20px;">
+                <div style="flex:1; max-height:400px; overflow-y:auto;">
+                    <label class="config-label">{ "Sessions" }</label>
+                    { for (*sessions).iter().map(|s| {
+                        let view = view.clone();
+                        let clear = clear.clone();
+                        let sid_view = s.session_id.clone();
+                        let sid_clear = s.session_id.clone();
+                        html! {
+                            <div class="card" key={s.session_id.clone()} style="cursor:pointer;" onclick={Callback::from(move |_| view.emit(sid_view.clone()))}>
+                                <div class="card-header">
+                                    <strong class="mono">{ &s.session_id[..std::cmp::min(8, s.session_id.len())] }</strong>
+                                    <span class="text-muted">{ format!("{} msgs", s.message_count) }</span>
+                                </div>
+                                <div class="text-muted" style="font-size:10px;">{ format!("{} ─ {}", &s.first_ts[..std::cmp::min(19, s.first_ts.len())], &s.last_ts[..std::cmp::min(19, s.last_ts.len())]) }</div>
+                                <button class="btn-sm" onclick={Callback::from(move |e: MouseEvent| { e.stop_propagation(); clear.emit(sid_clear.clone()); })} style="color:#ff4466;">{ "Clear" }</button>
+                            </div>
+                        }
+                    })}
+                    if sessions.is_empty() {
+                        <p class="empty-state">{ "No memory sessions." }</p>
+                    }
+                </div>
+                if !(*selected).is_empty() {
+                    <div style="flex:2; max-height:400px; overflow-y:auto;">
+                        <label class="config-label">{ format!("Session: {}", &(*selected)[..std::cmp::min(8, (*selected).len())]) }</label>
+                        { for (*messages).iter().map(|m| {
+                            html! {
+                                <div class="card" key={m.timestamp.clone()}>
+                                    <div class="card-header">
+                                        <strong>{ if m.role == "user" { "🧑 You" } else { "🤖 Assistant" } }</strong>
+                                        <span class="text-muted" style="font-size:10px;">{ &m.timestamp[..std::cmp::min(19, m.timestamp.len())] }</span>
+                                    </div>
+                                    <p class="card-desc">{ &m.content[..std::cmp::min(500, m.content.len())] }</p>
+                                </div>
+                            }
+                        })}
+                    </div>
+                }
+            </div>
         </div>
     }
 }
