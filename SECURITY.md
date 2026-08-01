@@ -49,7 +49,7 @@ API Keys 存储在 `~/.nexus/.env`（Linux/macOS）或 `%APPDATA%/nexus/.env`（
 ### 依赖管理
 
 - 所有 Rust 依赖通过 `Cargo.toml` 锁定
-- CI 定期运行 `cargo audit`（建议手动执行检查）
+- 建议定期运行 `cargo audit` 检查依赖漏洞（本地手动执行即可）
 
 ## 已知问题
 
