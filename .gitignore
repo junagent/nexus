@@ -13,5 +13,20 @@ dist/nexus.d.ts
 
 # OS
 .DS_Store
-Thumbs.db*.msi
+Thumbs.db
+
+# Build artifacts
+*.msi
 *.zip
+*.dmg
+*.deb
+*.AppImage
+*.exe
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Node (if applicable)
+node_modules/
+
