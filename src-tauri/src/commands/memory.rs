@@ -1,23 +1,7 @@
-use serde::Serialize;
 use tauri::State;
 use tokio::sync::Mutex;
 
-use crate::agent::NexusEngine;
-
-#[derive(Debug, Serialize)]
-pub struct MemoryEntry {
-    pub role: String,
-    pub content: String,
-    pub timestamp: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct MemorySession {
-    pub session_id: String,
-    pub message_count: u32,
-    pub first_ts: String,
-    pub last_ts: String,
-}
+use crate::agent::{NexusEngine, MemoryEntry, MemorySession};
 
 #[tauri::command]
 pub async fn memory_list(
